@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "name": "age动漫",
+  "desc": "AGE动漫（agedmani.com，MacCMS + a_0001 模板）【只取免费档】。这一族动漫站的取址形状是固定的三步：详情页 /v/{vodid}.html 里列出各条线路的分集链接 /p/{vodid}-{线路}-{集}.html → 播放页把真实地址写在自己的内联脚本 var player_aaaa={...} 里 → 那个 JSON 的 url 字段就是 m3u8。**本配方只做单集 / 电影页**：产出详情页第一条线路的第一集（电影页上这一集就是正片），一条页面一条轨。整部连载（几百集的番）请走「整部动漫抓取」，不要用这里 —— 这里按设计只出一条轨。",
+  "_给别的站开一份": "上面那三步是**通用 MacCMS 形状**，不止这一个站。要给别的动漫站开一份：把本文件复制到 用户配方/（那个目录升级不覆盖，媒体配方/ 会整体替换）、改个文件名与 name、把 host_suffix 换成那个站的域名即可。**但只有当那个站的路径也是 /v/{id}.html + /p/{id}-{线路}-{集}.html 时才直接可用**；路径换了形（MacCMS 默认模板是 /index.php/vod/play/id/{id}/sid/{sid}/nid/{nid}.html 那种）就得照 identity 与两条 URL 模板的写法再加一套 —— 没实测过的站别顺手写进来，本配方只标实测过的域名。",
+  "_为什么不用自带的采集接口": "MacCMS 都带一个免签名的数据接口 /api.php/provide/vod/?ac=detail&ids={vodid}，正常情况下一步就能拿到 play_url。**本站把它关了**（HTTP 500 / System Error 页），所以只能走页面这条路。给别的站开配方时先试这个接口，能通就比抠页面省事得多。",
+  "_免费档闸门（本配方唯一的判断）": "player_aaaa 里三个字段决定这是不是免费档，三个都得是 0 才出轨：encrypt=站方把 url 做了混淆、要靠它自家 player.js 才能还原（**不解，红线**，配方不执行脚本）；points=要积分/收费；trysee=只能试看几分钟（不是整片）。任一非 0 或非空 → 一条轨都不出（失败关闭，宁可不抓也不给错东西）。实测本站抽到的 20 个页面（电影/连载都有）三个字段全部是 0。",
+  "_实测（2026-09-12）": "拿 https://www.agedmani.com/v/144940.html#play（《超时空辉夜姬》，电影页，2 条线路）跑通：详情页第一条链接 → /p/144940-2-1.html → player_aaaa 给 https://v.lzcdn31.com/20260123/1667_219fd9cf/index.m3u8；该 m3u8 是主清单（一条 2000k/hls/mixed.m3u8，1080x608），子清单 1900 片、**无 EXT-X-KEY**，分片直接下得到（308504 字节/片，不带 Referer 也 200，CDN 不设防盗链）。另一条线路 /p/144940-1-1.html 给 vip.ffzy-plays.com 的 m3u8，同样通。",
+  "_AES-128 不等于 DRM（别见到了就弃站）": "同族的 jsm3u8 线路（vv.jisuzyv.com）的清单里带一条 `#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x…` —— 那是**标准 HLS 分片加密**，密钥就摆在同一个 CDN 上，程序自己有 AES-128 能力，照下不误。只有 METHOD=SAMPLE-AES / KEYFORMAT 是 skd:// 或 com.apple.streamingkeydelivery / urn:uuid:edef8ba9（Widevine）这几样才是商业 DRM，那时配方只把 drm 标识写出来让界面跳过，**绝不解密**。",
+  "_只出第一条线路，换线路怎么办": "详情页有多条线路时本配方只取**第一条**（站方默认那条），不把其余线路也摆成候选 —— 否则同一个电影会出两三条轨，弹窗里默认全勾上，一不小心就下回来两份。想换线路：把那条线路的播放页地址（形如 /p/{vodid}-{线路}-{集}.html）直接粘进弹窗，第二组 identity 认得这种地址，会照它指的线路取（**注意**：粘播放页时不会再回详情页，所以线路名以地址里的为准，不会退回第一条）。",
+  "_解析的两个坑": "① 详情页里 /p/ 链接有好几种长相（播放按钮、分集列表、下一集），一律 `href=\"/p/{数字}-{数字}-{数字}.html\"` 只认这一种，取**文档里第一条** = 默认线路第一集。② 播放页那段 JSON 用 `<script>…</script>` 卡住尾巴再 JSON 解析：`{...}` 里面还嵌着 vod_data 一层花括号，正则只能写非贪婪的 `\\{.*?\\}`，**绝不能只写 `player_aaaa=(\\{.*?\\})` 不卡结尾** —— 那样会在 vod_data 的 `}` 处提前收口，切出半截 JSON，参数看着全在、解析必失败。",
+  "_为什么只抠链接、不顺手把画质标签也带上": "分集链接的 title 属性（电影页是 HD中字、BD，连载页是第01集）本来也在同一个 <a> 标签里，但 **parse 一步只能回一个值**：写了捕获组就只回第 1 组，不写捕获组就回整条标签 —— 而下游拼 URL 的是个纯 `{变量}` 模板，两步之间没有能再加工的算子（emit.set 在步骤**之后**才算）。所以要 URL 就只能是捕获组里的那条链接，标签文本拿不到。为它多发一次请求不值当，故文件名只用接口自报的 vod_name，线路是哪条写在 note 里。",
+  "_不覆盖": "① 只出第一条线路的第一集，不做整部连载（那是「整部动漫抓取」的事）。② 不做站内搜索、不认分享短链、不认 /v/ /p/ 以外的路径形状（如 /voddetail/、/index.php/vod/…）。③ 站方加密（encrypt≠0）与积分/试看档**一律不出轨**，也不做任何绕过。④ m3u8 之外的分片形态（DASH/mp4 直链）虽然写了退回分支，但本站实测全是 m3u8，那条分支没跑过真机。",
+  "enabled": true,
+  "order": 150,
+
+  "host_suffix": ["agedmani.com"],
+  "short_hosts": [],
+  "cookies": "none",
+
+  "session": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "referer": "https://www.agedmani.com/",
+    "headers": {"Accept-Language": "zh-CN,zh;q=0.9"}
+  },
+
+  "identity": {
+    "_两组都带 base": "base 从粘进来的网址里现取源站前缀，下面两步都用 {base} 拼 —— 这样镜像域名换了、或者从 m. 手机域进来，跳转都还落在同一个站上，不用改配方。",
+    "any_of": [
+      [
+        {"name": "base", "from": "详情页 /v/{vodid}.html", "pattern": "^(https?://[^/]+)"},
+        {"name": "vid", "from": "详情页 /v/{vodid}.html", "pattern": "/v/(\\d+)\\.html"}
+      ],
+      [
+        {"name": "base", "from": "播放页 /p/{vodid}-{线路}-{集}.html", "pattern": "^(https?://[^/]+)"},
+        {"name": "vid", "from": "播放页 /p/{vodid}-{线路}-{集}.html", "pattern": "/p/(\\d+)-\\d+-\\d+\\.html"},
+        {"name": "sid", "from": "播放页 /p/{vodid}-{线路}-{集}.html", "pattern": "/p/\\d+-(\\d+)-\\d+\\.html"},
+        {"name": "nid", "from": "播放页 /p/{vodid}-{线路}-{集}.html", "pattern": "/p/\\d+-\\d+-(\\d+)\\.html"}
+      ]
+    ]
+  },
+
+  "steps": [
+    {
+      "name": "详情页取第一条线路的播放页",
+      "desc": "只在粘的是详情页时跑（粘播放页时 sid 已在地址里，when 判假、一次请求都不多发）。捕获组 1 = 那条 /p/ 链接，下一步直接拿它拼 URL —— 所以这里**必须**带捕获组、且只能抠这一个值（原因见文件尾「为什么只抠链接」）。",
+      "when": [{"path": "sid", "op": "empty"}],
+      "method": "GET",
+      "url": "{base}/v/{vid}.html",
+      "referer": "{base}/",
+      "timeout": 15,
+      "parse": {
+        "from": "详情页正文里第一条 /p/{vodid}-{线路}-{集}.html 链接",
+        "re": "<a[^>]+href=\"(/p/\\d+-\\d+-\\d+\\.html)\"",
+        "json": false
+      },
+      "as": "d",
+      "expect": [{"path": "d", "op": "nonempty"}],
+      "required": true
+    },
+    {
+      "name": "播放页取 player_aaaa",
+      "desc": "两条 URL 模板二选一，由程序挑「占位符齐备」的那条：粘播放页时 {sid}/{nid} 都在，走第一条、一步到位；粘详情页时没有 {sid}，走 {base}{d} 拼上一步抠出来的链接。referer 一律写详情页 —— 播放页是它跳过来的。",
+      "method": "GET",
+      "url": [
+        "{base}/p/{vid}-{sid}-{nid}.html",
+        "{base}{d}"
+      ],
+      "referer": "{base}/v/{vid}.html",
+      "timeout": 15,
+      "parse": {
+        "from": "播放页内联脚本 var player_aaaa={...}（MacCMS 标准写法）",
+        "re": "player_aaaa\\s*=\\s*(\\{.*?\\})\\s*;?\\s*</script>",
+        "json": true
+      },
+      "as": "p",
+      "expect": [{"path": "p.url", "op": "nonempty"}],
+      "required": true
+    }
+  ],
+
+  "emit": [
+    {
+      "name": "免费档 → 单条轨",
+      "desc": "三条闸门全过才出轨：encrypt / points / trysee 都必须是 0 或压根没这个字段。写 any(empty, eq 0) 而不是直接 eq 0，是因为「模板没这个键」和「值是空串」在 eq 下都判假，会把本来免费的老模板站整站挡在门外；反过来写成 empty 一种也不行 —— 字符串 \"0\" 是**有内容**的，会被 empty 误判成非 0。eq 有宽松数值比较，字段哪天从数字 0 变成字符串 \"0\" 也照样命中。",
+      "when": [
+        {"any": [{"path": "p.encrypt", "op": "empty"}, {"path": "p.encrypt", "op": "eq", "value": 0}]},
+        {"any": [{"path": "p.points", "op": "empty"}, {"path": "p.points", "op": "eq", "value": 0}]},
+        {"any": [{"path": "p.trysee", "op": "empty"}, {"path": "p.trysee", "op": "eq", "value": 0}]}
+      ],
+      "produce": [
+        {
+          "name": "HLS 清单（本站线路实测全是 m3u8）",
+          "when": [{"path": "p.url", "op": "contains_i", "value": "m3u8"}],
+          "track": {
+            "media_class": "video",
+            "kind": "hls",
+            "url": {"path": "p.url"},
+            "title_hint": {"path": "p.vod_data.vod_name", "default": ""},
+            "note": {"join": ["免费档 · ", {"path": "p.from"}, " 线路"], "sep": ""}
+          },
+          "stop": true
+        },
+        {
+          "name": "退回直链",
+          "desc": "给「url 不是 m3u8」留的口子（同族站偶尔给 mp4 直链）。写 stop 的是上面那条，故两条不会同时命中，同一个视频不会出两条轨。",
+          "when": [{"path": "p.url", "op": "nonempty"}],
+          "track": {
+            "media_class": "video",
+            "kind": "direct",
+            "url": {"path": "p.url"},
+            "ext": {"ext_of": {"url": {"path": "p.url"}, "default": "mp4"}},
+            "title_hint": {"path": "p.vod_data.vod_name", "default": ""},
+            "note": {"join": ["免费档（直链）· ", {"path": "p.from"}, " 线路"], "sep": ""}
+          }
+        }
+      ]
+    }
+  ]
+}

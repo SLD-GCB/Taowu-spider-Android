@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "girigiri愛動漫",
+  "desc": "girigiri愛動漫（ani.girigirilove.com）。**这是一份「站点形状」配方，本身不产出轨道**。本站播放页的玩家字段 var player_aaaa 是 encrypt:2 —— 真实地址被 base64+URL 双重编码过，而配方引擎按红线不允许解码/执行脚本（Schema 里 decode/decrypt 是禁用键），所以配方拿不到能播的 m3u8；那串地址是**通用模式里由程序自己**解出来的。所以本配方只做一件事：把本站分集链接的形状 /playGV{id}-{线}-{集}/ 告诉通用模式 —— 让「解析」能从详情页自动跳到播放页、「分集列表 / 整部抓取」能认出全部分集。",
+  "_为什么没有 steps/emit": "schema 允许「只有 episode_link、没有 emit」的配方。因此在**配方模式**下用本站会提示「未产出轨道」——那是预期行为，本站请用**通用模式**（页内扫描）。",
+  "_站点形状": "详情页 /GV{vodid}/ 里列出各线路分集链接 /playGV{vodid}-{线路}-{集}/（锚点文字常常只是 01/02，没有“第N集”，所以靠路径形状认，不靠文字）。播放页内联 var player_aaaa={...}，url 字段是 base64(URL编码(真实m3u8))；encrypt=2。",
+  "_实测（2026-10-10）": "https://ani.girigirilove.com/GV27186/ 详情页命中 4 条分集链接（线1 第1/2集、线2 第1/2集）；播放页 /playGV27186-1-1/ 的 player_aaaa.url 解出来是 https://akua.girigirilove.com/zijian/oldanime/2026/10/cht/KusuriyanoHitorigotoS3CHT/49/playlist.m3u8。手机 UA 与桌面 UA 页面一致。",
+  "_数据接口": "MacCMS 自带的 /api.php/provide/vod/?ac=detail&ids={id} **本站已关闭**（返回 closed），所以不存在“走接口一步拿地址”的捷径。",
+  "enabled": true,
+  "order": 150,
+  "host_suffix": ["ani.girigirilove.com", "girigirilove.com"],
+  "short_hosts": [],
+  "cookies": "none",
+
+  "session": {
+    "referer": "https://ani.girigirilove.com/"
+  },
+
+  "episode_link": {
+    "re": "^playGV(\\d+)-(\\d+)-(\\d+)$",
+    "line": 2,
+    "ep": 3
+  },
+
+  "identity": {
+    "any_of": [
+      [
+        {"name": "base", "from": "本站任意页（取源站前缀）", "pattern": "^(https?://[^/]+)"}
+      ]
+    ]
+  },
+
+  "steps": []
+}

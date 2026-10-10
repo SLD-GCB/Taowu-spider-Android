@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "name": "kuaishou",
+  "desc": "快手视频。**【读之前先看这段 —— 这份配方有一条硬前提】** 快手的详情页是 SSR：只有服务端认可的 did（浏览器里那个，不是当场新铸的）访问 /short-video/{photoId} 时，才会把 window.__APOLLO_STATE__ 连同直链一起嵌进 HTML；新铸 did 只会拿到 75KB 的空壳（实测：新铸 did 取内容页 0 个 .mp4；浏览器 did 则 92KB、15 个 .mp4）。而那条 did 目前**没有任何代码路径会收进 jar**（video_grab._jar_update 的两个调用点都在浏览器探测分支，只并入候选 URL 所在 host —— 快手的候选在 ndcimgs.com/yximg.com 上，不是 kuaishou.com），所以本配方在 jar 里没有快手 did 时必定 0 轨。这一步标了 required:true，但**它的作用只是「失败即整条放弃、绝不拿半截数据往下拼」**（`media_recipe.py:1185` 立 `_failed` → `_run_steps` 返回 False），引擎**不会**替它说一句「缺 did」——用户侧看到的只有一行「配方命中：kuaishou」+ 通用的「未发现可下载的音频/视频」。**症状是「命中配方却 0 轨」，不是一条报错**，这条得自己知道。另：直链 URL 里的 / 被服务端写成 \\u002F（JSON 转义），所以不能直接拿正则抠地址 —— 本配方先把 __APOLLO_STATE__ 整段按 json:true 收起（json.loads 顺手把 \\u002F 解回 /），再在已解析对象上做只读提取。地址带 tag=<epoch> 时效 token，标 ephemeral 现拉现用。整站的 /rest/v/* 与 /graphql 都要 __NS_hxfalcon/__NS_sig3 签名 —— 按红线不代算，所以不走那条路。**注意这里故意没有 session.bootstrap**：先访首页会让服务端当场铸一个新 did 存进 session，而本配方是用 cookies= 参数传 jar 里那份 did 的，requests 把参数并进 jar 而不是替换 → 同一个 did 名发两遍，服务器取第一个（新铸的、没 SSR 权限），实测 92KB→75KB、15 个 mp4→0 个。去掉 bootstrap 后只发一遍，SSR 正常。",
+  "enabled": true,
+  "order": 100,
+  "host_suffix": ["kuaishou.com"],
+  "short_hosts": ["v.kuaishou.com"],
+  "cookies": "jar",
+
+  "session": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "referer": "https://www.kuaishou.com/",
+    "headers": {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9"
+    }
+  },
+
+  "identity": {
+    "any_of": [
+      {"name": "photoId", "from": "url", "pattern": "/short-video/([A-Za-z0-9_-]+)"},
+      {"name": "photoId", "from": "url", "pattern": "/photo/([A-Za-z0-9_-]+)"},
+      {"name": "photoId", "from": "url", "pattern": "[?&]photoId=([A-Za-z0-9_-]+)"}
+    ]
+  },
+
+  "steps": [{
+    "name": "详情页 SSR",
+    "desc": "取 /short-video/{photoId} 的 HTML，从 window.__APOLLO_STATE__=…;(function… 这一段里抠出 Apollo 缓存整段 JSON。json:true 不只是解析 —— 它是**唯一能把服务端写的 \\u002F 解回 /** 的机制（算子表里没有 replace/unquote）。抽不出来 = 这步失败 = 出 0 轨，绝不拿半截文本往下传。",
+    "method": "GET",
+    "url": "https://www.kuaishou.com/short-video/{photoId}",
+    "referer": "https://www.kuaishou.com/",
+    "cookies": "jar",
+    "timeout": 20,
+    "required": true,
+    "as": "st",
+    "parse": {
+      "re": "window\\.__APOLLO_STATE__=(\\{.+?\\});\\s*\\(function",
+      "json": true
+    },
+    "expect": [{"path": "st.defaultClient", "op": "nonempty"}]
+  }],
+
+  "emit": [{
+    "name": "详情页 SSR 直链",
+    "desc": "路径取值不能写 {photoId}（_walk 不渲染模板），所以不按键名 VisionVideoDetailPhoto:<photoId> 取；改用两条不依赖 photoId 的路子 —— 首选在已解析对象上做只读正则提取 photoUrl，退路是 Apollo 给 manifest 归一化出的 VisionVideoSetRepresentation:1.url。两条都拿不到就不出轨。",
+    "set": {
+      "dc": {"path": "st.defaultClient"},
+
+      "u": {"any": [
+        {"match": {"path": "dc", "pattern": "'photoUrl': '(https?://[^']+)'", "group": 1}},
+        {"path": "dc.VisionVideoSetRepresentation:1.url"}
+      ]},
+
+      "cap": {"match": {"path": "dc", "pattern": "'caption': '([^']*)'", "group": 1}},
+      "dms": {"match": {"path": "dc", "pattern": "'duration': (\\d+)", "group": 1}},
+      "dur": {"div": [{"int": "{dms}"}, 1000]},
+
+      "title": {"rules": [
+        {"when": [{"path": "cap", "op": "nonempty"}], "value": "{cap}"},
+        {"value": "快手视频 {photoId}"}
+      ]}
+    },
+
+    "produce": [{
+      "name": "SSR 直链",
+      "when": [{"path": "u", "op": "nonempty"}],
+      "track": {
+        "media_class": "video",
+        "kind": "direct",
+        "url": "{u}",
+        "ext": "mp4",
+        "title_hint": "{title}",
+        "duration_s": "{dur}",
+        "ephemeral": true,
+        "note": "详情页 SSR 直链（带 tag= 时效 token，请尽快下载）"
+      }
+    }]
+  }]
+}

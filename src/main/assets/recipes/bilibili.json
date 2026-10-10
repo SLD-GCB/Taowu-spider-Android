@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "name": "bilibili",
+  "desc": "B站视频。匿名走 playurl(html5, fnval=0) 的 durl 单文件 mp4；共享 jar 里有 SESSDATA 时优先 DASH 分轨（video+audio 两 m4s，需 ffmpeg 合成）。番剧/会员付费播放接口需鉴权，不在本配方范围内。",
+  "enabled": true,
+  "order": 100,
+  "host_suffix": ["bilibili.com"],
+  "short_hosts": ["b23.tv"],
+  "cookies": "session+jar",
+
+  "session": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "referer": "https://www.bilibili.com/",
+    "bootstrap": {
+      "url": "https://api.bilibili.com/x/frontend/finger/spi",
+      "method": "GET",
+      "timeout": 8,
+      "cookies_from": "data",
+      "cookie_domain": ".bilibili.com"
+    }
+  },
+
+  "identity": {
+    "any_of": [
+      {"name": "bvid", "from": "url", "pattern": "(?i)\\b(BV[0-9A-Za-z]{10})\\b"},
+      {"name": "aid", "from": "url", "pattern": "(?i)(?:/av|/video/av|\\?aid=)(\\d+)", "type": "int"}
+    ],
+    "query": [
+      {"name": "p", "param": "p", "type": "int", "default": 1, "min": 1}
+    ]
+  },
+
+  "steps": [
+    {
+      "name": "view",
+      "desc": "稿件元信息：标题 + 分P 表（每P 一个 cid）。cid 是 playurl 的必填参数。",
+      "method": "GET",
+      "url": "https://api.bilibili.com/x/web-interface/view?bvid={bvid}",
+      "alt_url": ["https://api.bilibili.com/x/web-interface/view?aid={aid}"],
+      "referer": "https://www.bilibili.com/video/{bvid}",
+      "alt_referer": ["https://www.bilibili.com/video/av{aid}"],
+      "timeout": 15,
+      "as": "view",
+      "expect": [
+        {"path": "code", "op": "eq", "value": 0},
+        {"path": "data", "op": "nonempty"}
+      ],
+      "required": true
+    }
+  ],
+
+  "emit": [
+    {
+      "name": "按分P出轨",
+      "desc": "URL 带 ?p=N 且 N>1 → 只出该P；多P 且不带 p → 全部P；单P → 就这一P。",
+      "loop": {
+        "path": "view.data.pages",
+        "as": "pg",
+        "index_as": "idx",
+        "episode_param": "p",
+        "fallback": [{"cid": "{view.data.cid}", "part": "{view.data.title}"}]
+      },
+      "set": {
+        "title": {"path": "view.data.title", "default": ""},
+        "bv": {"path": "view.data.bvid", "default": "{bvid}"},
+        "multi": {"bool": [{"path": "view.data.pages", "op": "len_gt", "value": 1}]},
+        "part": {"path": "pg.part", "default": "{title}"},
+        "cid": {"path": "pg.cid"},
+        "label": {"rules": [
+          {"when": [{"path": "multi", "op": "truthy"}], "value": "{title}｜P{idx} {part}"},
+          {"value": "{title}"}
+        ]}
+      },
+
+      "steps": [
+        {
+          "name": "dash",
+          "desc": "登录态才走 DASH：匿名 DASH 被服务端钳到 ≤480p，反不如匿名 durl 的 720p。",
+          "when": [{"path": "cookies.SESSDATA", "op": "nonempty"}],
+          "method": "GET",
+          "url": "https://api.bilibili.com/x/player/playurl?bvid={bv}&cid={cid}&qn={qn}&fnval=4048&fourk=1",
+          "referer": "https://www.bilibili.com/video/{bv}",
+          "timeout": 15,
+          "as": "dash",
+          "expect": [
+            {"path": "code", "op": "eq", "value": 0},
+            {"path": "data.dash.video", "op": "nonempty"},
+            {"path": "data.dash.audio", "op": "nonempty"}
+          ],
+          "ladder": {"var": "qn", "values": [116, 80, 64, 32, 16]}
+        },
+        {
+          "name": "durl_login",
+          "desc": "登录态下 DASH 拿不到时的兜底（老稿件/无 DASH 档）。",
+          "when": [
+            {"path": "cookies.SESSDATA", "op": "nonempty"},
+            {"any": [
+              {"path": "dash.data.dash.video", "op": "empty"},
+              {"path": "dash.data.dash.audio", "op": "empty"}
+            ]}
+          ],
+          "method": "GET",
+          "url": "https://api.bilibili.com/x/player/playurl?bvid={bv}&cid={cid}&qn={qn}&platform=html5&fnval=0",
+          "referer": "https://www.bilibili.com/video/{bv}",
+          "timeout": 15,
+          "as": "play",
+          "expect": [
+            {"path": "code", "op": "eq", "value": 0},
+            {"path": "data.durl", "op": "len_eq", "value": 1},
+            {"path": "data.durl[0].url", "op": "nonempty"}
+          ],
+          "ladder": {"var": "qn", "values": [116, 80, 64, 32, 16]}
+        },
+        {
+          "name": "durl_anon",
+          "desc": "匿名主路径。html5 + fnval=0 至今免 wbi 签名；qn=64 即 720p。",
+          "when": [{"path": "cookies.SESSDATA", "op": "empty"}],
+          "method": "GET",
+          "url": "https://api.bilibili.com/x/player/playurl?bvid={bv}&cid={cid}&qn={qn}&platform=html5&fnval=0",
+          "referer": "https://www.bilibili.com/video/{bv}",
+          "timeout": 15,
+          "as": "play",
+          "expect": [
+            {"path": "code", "op": "eq", "value": 0},
+            {"path": "data.durl", "op": "len_eq", "value": 1},
+            {"path": "data.durl[0].url", "op": "nonempty"}
+          ],
+          "ladder": {"var": "qn", "values": [64, 32, 16]}
+        }
+      ],
+
+      "produce": [
+        {
+          "name": "dash",
+          "desc": "登录：video 选 id 最大 → 同 id 优先 avc → 码率最大；audio 选码率最大。",
+          "when": [
+            {"path": "dash.data.dash.video", "op": "nonempty"},
+            {"path": "dash.data.dash.audio", "op": "nonempty"}
+          ],
+          "set": {
+            "v": {"pick": {
+              "path": "dash.data.dash.video",
+              "where": [{"path": "baseUrl", "op": "nonempty"}],
+              "sort": [
+                {"path": "id", "order": "desc"},
+                {"path": "codecs", "order": "desc", "prefer_re": "^avc1"},
+                {"path": "bandwidth", "order": "desc"}
+              ]
+            }},
+            "a": {"pick": {
+              "path": "dash.data.dash.audio",
+              "where": [{"path": "baseUrl", "op": "nonempty"}],
+              "sort": [{"path": "bandwidth", "order": "desc"}]
+            }}
+          },
+          "track": {
+            "media_class": "video",
+            "kind": "dash",
+            "url": "{v.baseUrl}",
+            "ext": "mp4",
+            "title_hint": "{label}",
+            "note": "DASH {v.width}x{v.height} {v.codecs} + 音轨（登录，需 ffmpeg 合成）",
+            "parts": [
+              {"media_class": "video", "kind": "direct", "url": "{v.baseUrl}", "ext": "m4s",
+               "note": "{v.width}x{v.height} {v.codecs}"},
+              {"media_class": "audio", "kind": "direct", "url": "{a.baseUrl}", "ext": "m4s",
+               "note": "{a.codecs}"}
+            ]
+          }
+        },
+        {
+          "name": "durl",
+          "desc": "单段 durl = 完整单文件 mp4（url 里已带签名，直接可下）。",
+          "when": [{"path": "play.data.durl[0].url", "op": "nonempty"}],
+          "track": {
+            "media_class": "video",
+            "kind": "direct",
+            "url": "{play.data.durl[0].url}",
+            "ext": {"ext_of": {
+              "url": "{play.data.durl[0].url}",
+              "whitelist": ["mp4", "flv", "m4s", "webm"],
+              "default": "mp4"
+            }},
+            "title_hint": "{label}",
+            "note": {"join": [
+              "durl qn", {"path": "qn"}, " ",
+              {"size": {"path": "play.data.durl[0].size"}}, "单文件"
+            ], "sep": ""}
+          }
+        }
+      ]
+    }
+  ]
+}

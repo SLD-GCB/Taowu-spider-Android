@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "name": "youtube",
+  "desc": "YouTube 视频。走平台公开的 innertube player 接口（POST JSON），按客户端阶梯试：ANDROID / IOS / WEB。ANDROID（当前 clientVersion）是被豁免的那条缝，免 PO token 直接下发直链；clientVersion 陈旧会回 HTTP 400 Precondition check failed，故该值需随平台更新（与 yt-dlp 维护的 INNERTUBE_CLIENTS 同步）。双形态：adaptive 带 url（干净出口 IP）→ video+audio 复合轨需 ffmpeg 合成；否则渐进混流单文件（itag18，SABR-only 出口 IP 下唯一可用形态）。红线：signatureCipher（n/sig 混淆）不解密，命中即跳过；不生成 PO token；不实现 SABR/UMP 私有协议。",
+  "enabled": true,
+  "order": 100,
+  "host_suffix": ["youtube.com", "youtube-nocookie.com", "youtu.be"],
+  "short_hosts": ["youtu.be"],
+  "cookies": "none",
+
+  "identity": {
+    "any_of": [
+      {"name": "video_id", "from": "url",
+       "pattern": "(?:[?&]v=|youtu\\.be/|/shorts/|/embed/|/live/|/v/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])"},
+      {"name": "video_id", "from": "url",
+       "pattern": "(?:^|/)([A-Za-z0-9_-]{11})(?:[/?#]|$)"}
+    ]
+  },
+
+  "steps": [
+    {
+      "name": "player",
+      "desc": "innertube player。阶梯的每一档是一个完整的客户端身份（clientVersion + UA + Android 版本），在**同一个 POST 模板**里换档：body 里该档没有的字段渲染成空串会被自动丢掉，不必为每档抄一份 body。",
+      "method": "POST",
+      "url": "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false",
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "{cli.ua}",
+        "Accept-Language": "en-US,en;q=0.9"
+      },
+      "timeout": 25,
+      "as": "player",
+      "required": true,
+      "ladder": {
+        "var": "cli",
+        "values": [
+          {"clientName": "ANDROID", "clientVersion": "21.26.364",
+           "androidSdkVersion": 30, "osName": "Android", "osVersion": "11",
+           "hl": "en", "gl": "US",
+           "ua": "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip"},
+          {"clientName": "IOS", "clientVersion": "21.26.4",
+           "deviceMake": "Apple", "deviceModel": "iPhone16,2",
+           "osName": "iPhone", "osVersion": "18.3.2.22D82", "hl": "en", "gl": "US",
+           "ua": "com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"},
+          {"clientName": "WEB", "clientVersion": "2.20260708.00.00", "hl": "en", "gl": "US",
+           "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+        ]
+      },
+      "json": {
+        "context": {
+          "client": {
+            "clientName": "{cli.clientName}",
+            "clientVersion": "{cli.clientVersion}",
+            "androidSdkVersion": {"rules": [
+              {"when": [{"path": "cli.androidSdkVersion", "op": "exists"}],
+               "value": {"int": {"path": "cli.androidSdkVersion"}}},
+              {"value": ""}
+            ]},
+            "deviceMake": "{cli.deviceMake}",
+            "deviceModel": "{cli.deviceModel}",
+            "osName": "{cli.osName}",
+            "osVersion": "{cli.osVersion}",
+            "hl": "{cli.hl}",
+            "gl": "{cli.gl}"
+          }
+        },
+        "videoId": "{video_id}",
+        "contentCheckOk": true,
+        "racyCheckOk": true
+      },
+      "expect": [
+        {"path": "playabilityStatus.status", "op": "eq", "value": "OK"},
+        {"any": [
+          {"all": [
+            {"path": "streamingData.adaptiveFormats[].mimeType", "op": "any_re",
+             "value": "(?i)^video/mp4; ?codecs=\"(avc1|avc3|av01)"},
+            {"path": "streamingData.adaptiveFormats[].mimeType", "op": "any_re",
+             "value": "(?i)^audio/mp4; ?codecs=\"mp4a"}
+          ]},
+          {"path": "streamingData.formats[].url", "op": "nonempty"}
+        ]}
+      ]
+    }
+  ],
+
+  "emit": [
+    {
+      "name": "player 出轨",
+      "desc": "先试 adaptive 分轨（只收能装进 mp4 的编码：avc1/avc3/av01 + mp4a，webm/opus 不收），再退渐进混流单文件。都没有 → 本配方产 0 轨，交 resolve_page 的通用层/浏览器缝。",
+      "set": {
+        "t": {"rules": [
+          {"when": [{"path": "player.videoDetails.title", "op": "nonempty"}],
+           "value": {"path": "player.videoDetails.title"}},
+          {"value": "YouTube {video_id}"}
+        ]},
+        "title": {"join": [{"path": "t"}, {"path": "player.videoDetails.author"}], "sep": "｜"},
+        "dur": {"float": {"path": "player.videoDetails.lengthSeconds"}},
+
+        "v": {"pick": {
+          "path": "player.streamingData.adaptiveFormats",
+          "where": [
+            {"path": "url", "op": "nonempty"},
+            {"path": "mimeType", "op": "re", "value": "(?i)^video/mp4; ?codecs=\"(avc1|avc3|av01)"}
+          ],
+          "sort": [
+            {"mul": ["width", "height"], "order": "desc"},
+            {"path": "mimeType", "order": "desc", "prefer_re": "(?i)codecs=\"avc"},
+            {"path": "bitrate", "order": "desc"}
+          ],
+          "require_len": 1
+        }},
+        "a": {"pick": {
+          "path": "player.streamingData.adaptiveFormats",
+          "where": [
+            {"path": "url", "op": "nonempty"},
+            {"path": "mimeType", "op": "re", "value": "(?i)^audio/mp4; ?codecs=\"mp4a"}
+          ],
+          "sort": [{"path": "bitrate", "order": "desc"}],
+          "require_len": 1
+        }},
+        "prog": {"pick": {
+          "path": "player.streamingData.formats",
+          "where": [{"path": "url", "op": "nonempty"}],
+          "sort": [
+            {"mul": ["width", "height"], "order": "desc"},
+            {"path": "bitrate", "order": "desc"}
+          ]
+        }},
+
+        "vc": {"match": {"path": "v.mimeType", "pattern": "(?i)codecs=\"([^\".]+)", "default": "?"}},
+        "ac": {"match": {"path": "a.mimeType", "pattern": "(?i)codecs=\"([^\".]+)", "default": "?"}},
+        "pwh": {"rules": [
+          {"when": [{"path": "prog.width", "op": "gt", "value": 0}],
+           "value": "{prog.width}x{prog.height}"},
+          {"value": ""}
+        ]}
+      },
+
+      "produce": [
+        {
+          "name": "adaptive",
+          "desc": "干净出口 IP：adaptiveFormats 带 url → video+audio 复合轨（走既有 ffmpeg 合成）。",
+          "stop": true,
+          "when": [{"path": "v", "op": "nonempty"}, {"path": "a", "op": "nonempty"}],
+          "track": {
+            "media_class": "video",
+            "kind": "dash",
+            "url": "{v.url}",
+            "ext": "mp4",
+            "title_hint": "{title}",
+            "duration_s": "{dur}",
+            "note": "DASH 分轨 {v.width}x{v.height} {vc} + 音轨（需 ffmpeg 合成）",
+            "parts": [
+              {"media_class": "video", "kind": "direct", "url": "{v.url}", "ext": "mp4",
+               "note": "{v.width}x{v.height} {vc}"},
+              {"media_class": "audio", "kind": "direct", "url": "{a.url}", "ext": "mp4",
+               "note": "{ac}"}
+            ]
+          }
+        },
+        {
+          "name": "渐进",
+          "desc": "SABR-only 出口 IP：adaptive 一条 url 都不下发，只有 itag18 混流单文件带 url。",
+          "when": [{"path": "prog.url", "op": "nonempty"}],
+          "track": {
+            "media_class": "video",
+            "kind": "direct",
+            "url": "{prog.url}",
+            "ext": "mp4",
+            "title_hint": "{title}",
+            "duration_s": "{dur}",
+            "note": {"join": [
+              "渐进 itag", {"path": "prog.itag"}, " ", "{pwh}", " ",
+              {"size": {"path": "prog.contentLength"}}, "（混流单文件）"
+            ], "sep": ""}
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "_说明": "配方模板。用的时候：复制一份改个好记的文件名（别用 _ 开头，_开头不会生效），把下面每一项改成你的站。写完放 用户配方/ 目录（别放本目录，本目录是自带的、升级会被覆盖）；也可以用「通用媒体下载」弹窗上的 [导入配方] 按钮导入，导入前会先校验。完整字段手册见同目录 说明.md。",
+  "_校验": "把配方 json 选进 [导入配方] 按钮即可，写错了会当场列出原因；命令行等价写法：python -c \"import media_recipe as m; s,e=m.load_recipe('用户配方/你的配方.json'); print(e or 'OK')\"",
+  "_注意": "本文件里的键凡是 _ 开头的，引擎一律忽略，所以下面那些 _示例_xxx 只是给你抄的样例，不影响运行。",
+
+  "schema_version": 1,
+  "name": "改成你的站名（别和别的配方重名）",
+  "desc": "这个站是靠什么接口拿播放地址的，写给未来的自己看",
+
+  "host_suffix": ["example.com"],
+  "short_hosts": [],
+  "cookies": "jar",
+
+  "identity": {
+    "any_of": [
+      {"name": "vid", "pattern": "/video/(\\d+)"},
+      {"name": "vid", "pattern": "[?&]vid=(\\d+)"}
+    ]
+  },
+
+  "session": {
+    "referer": "https://www.example.com/",
+    "headers": {"Accept-Language": "zh-CN,zh;q=0.9"}
+  },
+
+  "steps": [{
+    "name": "取播放信息",
+    "url": "https://api.example.com/play?id={vid}",
+    "referer": "https://www.example.com/video/{vid}",
+    "as": "play",
+    "required": true,
+    "expect": [{"path": "code", "op": "eq", "value": 0}]
+  }],
+
+  "emit": [{
+    "when": [{"path": "play.data.url", "op": "nonempty"}],
+    "set": {
+      "whs": {"join": [{"path": "play.data.width"}, {"path": "play.data.height"}], "sep": "x"}
+    },
+    "track": {
+      "media_class": "video",
+      "kind": "direct",
+      "url": {"path": "play.data.url"},
+      "ext": {"ext_of": {"url": {"path": "play.data.url"}, "default": "mp4"}},
+      "title_hint": {"path": "play.data.title"},
+      "duration_s": {"path": "play.data.duration"},
+      "note": {"join": ["{whs}"], "sep": ""}
+    }
+  }],
+
+  "_示例_分P或分集": {
+    "_用途": "一个页面下挂很多集/很多P时，把 emit 外面套一个 loop。",
+    "loop": {
+      "path": "play.data.pages",
+      "as": "page",
+      "index_as": "pnum",
+      "episode_param": "p",
+      "fallback": [{"cid": "{vid}"}]
+    },
+    "_说明": "path 取到的每一项都会把这条 emit 规则跑一遍；as 是当前项的变量名，index_as 是第几集（从1开始）。fallback 是列表取空时的字面量兜底。episode_param 会额外生成 {page.episode_url}（带集号的地址）。"
+  },
+
+  "_示例_多形态择优": {
+    "_用途": "一个视频有分轨/混流/HLS 多种拿法时，挨个试，能出就出。用 produce 代替 track。",
+    "produce": [
+      {"name": "优先分轨", "when": [{"path": "v", "op": "nonempty"}],
+       "track": {"media_class": "video", "kind": "dash", "url": "{v}", "ext": "mp4",
+                 "parts": [{"media_class": "audio", "url": "{a}", "ext": "m4a", "kind": "direct"}]},
+       "stop": true},
+      {"name": "退回混流", "when": [{"path": "prog", "op": "nonempty"}],
+       "track": {"media_class": "video", "kind": "direct", "url": "{prog}", "ext": "mp4"}}
+    ],
+    "_说明": "stop:true = 命中即停，不再试后面的。用它保证同一个视频不会既出分轨又出混流（两条重复轨）。parts 里的分轨程序会自动调 ffmpeg 合成。"
+  },
+
+  "_示例_选优": {
+    "_用途": "接口返回一列不同清晰度的流时，挑一条。几乎每个站都要用。",
+    "pick": {
+      "path": "play.data.quality_list",
+      "where": [{"path": "codec", "op": "ne", "value": "h265"}],
+      "sort": [{"mul": ["width", "height"]}, {"path": "bitrate"}],
+      "require_len": 1,
+      "take": 0
+    },
+    "_说明": "where 里的路径是相对候选元素的短路径（写 codec，不写 play.data.quality_list[].codec）。sort 靠前的键优先，默认倒序（最好的在前）。require_len 是过滤后至少要有几条，不够就整个 pick 返回空。"
+  },
+
+  "_示例_浏览器辅助": {
+    "_用途": "接口要签名、或者地址藏在 JS/Worker 里，HTTP 拿不到时用。开真浏览器旁观页面自己发出的请求。",
+    "_何时用": "先试 steps；只有 steps 确实走不通才用它。它慢（十几秒）而且拿到的直链常带时效。",
+    "browser_seam": {
+      "name": "某某站浏览器辅助",
+      "url": "https://www.example.com/video/{vid}",
+      "wait_sec": 24,
+      "watch": {
+        "path_contains": ["/api/detail/"],
+        "url_contains": ["{vid}"],
+        "json_require": [{"path": "data.playurl", "op": "nonempty"}],
+        "validate": [{"path": "data.id", "op": "eq", "value": "{vid}"}],
+        "as": "detail"
+      },
+      "emit": [{
+        "when": [{"path": "detail.data.playurl", "op": "nonempty"}],
+        "track": {
+          "media_class": "video", "kind": "direct",
+          "url": {"path": "detail.data.playurl"}, "ext": "mp4",
+          "ephemeral": true,
+          "note": "时效直链，请尽快下载"
+        }
+      }]
+    },
+    "_说明": "path_contains 是接口地址里的特征片段（写配方时你要先自己在浏览器 F12 里看一眼这个站的接口长什么样）。validate 是拿到之后再核对一遍，防串号。拿到的是带时效 token 的直链，记得写 ephemeral:true。"
+  },
+
+  "_示例_纯音频站": {
+    "_用途": "播客 / 电台 / 有声书 / 音乐站。写法与视频只有三点不同，详见 说明.md §7.3。",
+    "_三点不同": "① media_class 建议显式写 audio（留空也能按扩展名猜，但音频落 output/audio、视频落 output/video，是两套下载栈）；② kind 决定是不是播放清单——直链写 direct、.m3u8 写 hls、.mpd 写 dash，写错不会报错，但会把清单文本本身当音频下回来；③ 清单类的 ext 不用给。",
+    "emit": [{
+      "produce": [
+        {"name": "优先清单版", "when": [{"path": "play.data.hls_url", "op": "nonempty"}],
+         "track": {"media_class": "audio", "kind": "hls",
+                   "url": {"path": "play.data.hls_url"},
+                   "title_hint": {"path": "play.data.title"}},
+         "stop": true},
+        {"name": "退回直链", "when": [{"path": "play.data.mp3_url", "op": "nonempty"}],
+         "track": {"media_class": "audio", "kind": "direct",
+                   "url": {"path": "play.data.mp3_url"}, "ext": "mp3",
+                   "title_hint": {"path": "play.data.title"}}}
+      ]
+    }],
+    "_红线提醒": "F12 打开那份 .m3u8，看到 #EXT-X-KEY:METHOD=SAMPLE-AES / skd:// / edef8ba9 / /drm/ 任一条 = 商业 DRM，配方做不了也不该做，直接弃站。"
+  },
+
+  "_红线": "配方是数据不是代码。sign/signature/a_bogus/wbi/decrypt/key/license/widevine/playready/fairplay/clearkey/captcha/eval/exec/code/script/js 这些键名一旦出现，校验直接拒绝并说明原因 —— 不生成签名、不解密、不破验证码、不执行脚本。接口要签名时改用上面的 browser_seam，让真浏览器自己去调。"
+}

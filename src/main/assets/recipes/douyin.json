@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "name": "douyin",
+  "desc": "抖音视频。抖音 Web 是纯 JS 壳（零 SSR），详情走 /aweme/v1/web/aweme/detail 接口，该接口**匿名与登录态 HTTP 都需要 a_bogus 签名**（无签名回 200 空体）→ 本配方的 HTTP 路径恒 0 轨。出路是【浏览器辅助缝】：让真 Chrome 自己开一次播放页，用 CDP Network **读回页面自己已经拉到的** detail 响应 JSON（页面层 fetch/XHR 打点看不见——抖音拉流在 Web Worker 里做、经 MSE/blob 出画），再从 JSON 里取 video.bit_rate[] 的 douyinvod 直链 mp4。只读页面自己发的请求，绝不代为构造请求、绝不实现 a_bogus。直链里嵌了签名、匿名可拉（实测 206），但 URL 带**时效 token** → 标 ephemeral，现拉现用请尽快下载。",
+  "enabled": true,
+  "order": 100,
+  "host_suffix": ["douyin.com"],
+  "short_hosts": ["v.douyin.com", "iesdouyin.com"],
+  "cookies": "none",
+
+  "identity": {
+    "any_of": [
+      {"name": "aweme_id", "from": "url", "pattern": "/share/video/(\\d+)"},
+      {"name": "aweme_id", "from": "url", "pattern": "/video/(\\d+)"},
+      {"name": "aweme_id", "from": "url", "pattern": "[?&]modal_id=(\\d+)"}
+    ]
+  },
+
+  "browser_seam": {
+    "name": "douyin浏览器辅助",
+    "url": "https://www.douyin.com/video/{aweme_id}",
+    "wait_sec": 24,
+    "watch": {
+      "path_contains": ["/aweme/v1/web/aweme/detail/"],
+      "url_contains": ["{aweme_id}"],
+      "json_require": [{"path": "aweme_detail", "op": "nonempty"}],
+      "validate": [{"path": "aweme_detail.aweme_id", "op": "eq", "value": "{aweme_id}"}],
+      "as": "detail"
+    },
+
+    "emit": [
+      {
+        "name": "detail 出轨",
+        "desc": "档位选择：video.bit_rate[] 里取 分辨率面积×码率 最大者（每档一条独立直链）；没有 bit_rate 再退 video.play_addr，再退 video.download_addr。",
+        "set": {
+          "va": {"path": "detail.aweme_detail.video"},
+
+          "best": {"pick": {
+            "path": "detail.aweme_detail.video.bit_rate",
+            "where": [{"path": "play_addr.url_list[0]", "op": "nonempty"}],
+            "sort": [
+              {"mul": ["play_addr.width", "play_addr.height"], "order": "desc"},
+              {"path": "bit_rate", "order": "desc"}
+            ],
+            "require_len": 1
+          }},
+
+          "src": {"rules": [
+            {"when": [{"path": "best.play_addr", "op": "nonempty"}],
+             "value": {"path": "best.play_addr"}},
+            {"when": [{"path": "va.play_addr", "op": "nonempty"}],
+             "value": {"path": "va.play_addr"}},
+            {"value": {"path": "va.download_addr"}}
+          ]},
+          "url": {"path": "src.url_list[0]"},
+
+          "ds": {"rules": [
+            {"when": [{"path": "detail.aweme_detail.desc", "op": "nonempty"}],
+             "value": {"path": "detail.aweme_detail.desc"}},
+            {"value": "抖音视频 {aweme_id}"}
+          ]},
+          "title": {"join": ["{ds}", {"path": "detail.aweme_detail.author.nickname"}], "sep": "｜"},
+
+          "dms": {"rules": [
+            {"when": [{"path": "detail.aweme_detail.duration", "op": "truthy"}],
+             "value": {"int": {"path": "detail.aweme_detail.duration"}}},
+            {"value": {"int": {"path": "detail.aweme_detail.video.duration"}}}
+          ]},
+          "dur": {"div": ["{dms}", 1000]},
+
+          "whs": {"rules": [
+            {"when": [{"path": "src.width", "op": "gt", "value": 0},
+                      {"path": "src.height", "op": "gt", "value": 0}],
+             "value": " {src.width}x{src.height}"},
+            {"value": ""}
+          ]},
+          "brs": {"rules": [
+            {"when": [{"path": "best.bit_rate", "op": "gt", "value": 0}],
+             "value": " {kbps}Kbps"},
+            {"value": ""}
+          ]},
+          "kbps": {"int": {"div": [{"path": "best.bit_rate"}, 1000]}}
+        },
+
+        "produce": [
+          {
+            "name": "douyinvod 直链",
+            "when": [{"path": "url", "op": "nonempty"}],
+            "track": {
+              "media_class": "video",
+              "kind": "direct",
+              "url": "{url}",
+              "ext": "mp4",
+              "title_hint": "{title}",
+              "duration_s": "{dur}",
+              "ephemeral": true,
+              "note": {"join": [
+                "douyinvod 直链", "{whs}", "{brs}",
+                "（浏览器辅助取 detail，带时效 token 请尽快下载）"
+              ], "sep": ""}
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
