@@ -1,0 +1,66 @@
+{
+  "id": "学术文献",
+  "name": "学术文献",
+  "desc": "论文/期刊详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "标题",
+      "type": "TEXT",
+      "rule": "学术_标题"
+    },
+    {
+      "name": "作者",
+      "type": "TEXT",
+      "rule": "学术_作者"
+    },
+    {
+      "name": "期刊",
+      "type": "TEXT",
+      "rule": "学术_期刊"
+    },
+    {
+      "name": "年份",
+      "type": "TEXT",
+      "rule": "学术_年份"
+    },
+    {
+      "name": "期卷",
+      "type": "TEXT",
+      "rule": "学术_期卷"
+    },
+    {
+      "name": "关键词",
+      "type": "TEXT",
+      "rule": "学术_关键词"
+    },
+    {
+      "name": "摘要",
+      "type": "TEXT",
+      "rule": "学术_摘要"
+    },
+    {
+      "name": "DOI",
+      "type": "TEXT",
+      "rule": "学术_DOI"
+    },
+    {
+      "name": "引用格式",
+      "type": "TEXT",
+      "rule": "学术_引用格式"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

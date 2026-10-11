@@ -19,8 +19,14 @@ android {
         applicationId = "com.taowu"
         minSdk = 26
         targetSdk = 37
-        versionCode = 16
-        versionName = "3.4"
+        versionCode = 35
+        versionName = "5.3"
+
+        // FFmpeg 软解（NextLib）每个 ABI 数 MB —— 只保留真机常见的两种，
+        // 砍掉只用于模拟器的 x86/x86_64，控制 APK 体积。
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
@@ -85,6 +91,10 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("androidx.media3:media3-transformer:1.11.1")
+
+    // FFmpeg 软解后端（H.264/HEVC/VP8/VP9/AV1）。版本号 = media3版本-nextlib版本，
+    // 必须与上面 media3 的 1.11.1 对齐。GPL-3.0，与本项目 AGPL-3.0 兼容（GPLv3 §13）。
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0")
 
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")

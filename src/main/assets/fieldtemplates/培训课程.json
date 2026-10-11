@@ -1,0 +1,66 @@
+{
+  "id": "培训课程",
+  "name": "培训课程",
+  "desc": "培训机构/课程详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "课程名称",
+      "type": "TEXT",
+      "rule": "培训_课程名称"
+    },
+    {
+      "name": "培训机构",
+      "type": "TEXT",
+      "rule": "培训_培训机构"
+    },
+    {
+      "name": "价格",
+      "type": "TEXT",
+      "rule": "培训_价格"
+    },
+    {
+      "name": "课时",
+      "type": "TEXT",
+      "rule": "培训_课时"
+    },
+    {
+      "name": "授课方式",
+      "type": "TEXT",
+      "rule": "培训_授课方式"
+    },
+    {
+      "name": "城市",
+      "type": "TEXT",
+      "rule": "培训_城市"
+    },
+    {
+      "name": "适合人群",
+      "type": "TEXT",
+      "rule": "培训_适合人群"
+    },
+    {
+      "name": "课程简介",
+      "type": "TEXT",
+      "rule": "培训_课程简介"
+    },
+    {
+      "name": "讲师",
+      "type": "TEXT",
+      "rule": "培训_讲师"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

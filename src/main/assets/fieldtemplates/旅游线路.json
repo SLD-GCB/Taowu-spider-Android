@@ -1,0 +1,66 @@
+{
+  "id": "旅游线路",
+  "name": "旅游线路",
+  "desc": "旅行社线路/行程详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "线路名称",
+      "type": "TEXT",
+      "rule": "旅游_线路名称"
+    },
+    {
+      "name": "目的地",
+      "type": "TEXT",
+      "rule": "旅游_目的地"
+    },
+    {
+      "name": "出发城市",
+      "type": "TEXT",
+      "rule": "旅游_出发城市"
+    },
+    {
+      "name": "行程天数",
+      "type": "TEXT",
+      "rule": "旅游_行程天数"
+    },
+    {
+      "name": "价格",
+      "type": "TEXT",
+      "rule": "旅游_价格"
+    },
+    {
+      "name": "团期",
+      "type": "TEXT",
+      "rule": "旅游_团期"
+    },
+    {
+      "name": "供应商",
+      "type": "TEXT",
+      "rule": "旅游_供应商"
+    },
+    {
+      "name": "行程安排",
+      "type": "TEXT",
+      "rule": "旅游_行程安排"
+    },
+    {
+      "name": "咨询电话",
+      "type": "TEXT",
+      "rule": "旅游_咨询电话"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

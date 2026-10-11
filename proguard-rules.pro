@@ -37,3 +37,10 @@
 # ---- 其它可选依赖的告警（不影响运行）----
 -dontwarn javax.annotation.**
 -dontwarn kotlinx.coroutines.debug.**
+
+# ---- NextLib（FFmpeg 软解扩展，JNI + 反射挂 renderer）----
+-keep class io.github.anilbeesetti.nextlib.** { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+-dontwarn io.github.anilbeesetti.**

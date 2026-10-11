@@ -1,0 +1,66 @@
+{
+  "id": "农产品批发",
+  "name": "农产品批发",
+  "desc": "农产品批发/行情报价页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "品名",
+      "type": "TEXT",
+      "rule": "农产品_品名"
+    },
+    {
+      "name": "产地",
+      "type": "TEXT",
+      "rule": "农产品_产地"
+    },
+    {
+      "name": "规格",
+      "type": "TEXT",
+      "rule": "农产品_规格"
+    },
+    {
+      "name": "单位",
+      "type": "TEXT",
+      "rule": "农产品_单位"
+    },
+    {
+      "name": "批发价",
+      "type": "TEXT",
+      "rule": "农产品_批发价"
+    },
+    {
+      "name": "市场",
+      "type": "TEXT",
+      "rule": "农产品_市场"
+    },
+    {
+      "name": "报价日期",
+      "type": "TEXT",
+      "rule": "农产品_报价日期"
+    },
+    {
+      "name": "最低价",
+      "type": "TEXT",
+      "rule": "农产品_最低价"
+    },
+    {
+      "name": "最高价",
+      "type": "TEXT",
+      "rule": "农产品_最高价"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

@@ -85,6 +85,8 @@ fun PlayerScreen(
     var errText by remember { mutableStateOf("") }
     var fullscreen by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    // 硬解失败后自动用软解重试本集（每集只重试一次）
+    var forceSoft by remember(currentTrack.url, currentIndex) { mutableStateOf(false) }
 
     /** 进度记忆的键：整部按"标题#集标签"，单条按直链。 */
     fun posKey(t: Track, idx: Int): String =
@@ -118,15 +120,21 @@ fun PlayerScreen(
         }
     }
 
-    val player = remember(currentTrack.url, currentIndex) {
+    val player = remember(currentTrack.url, currentIndex, forceSoft) {
         val start = PlayPositions.get(context, posKey(currentTrack, currentIndex))
-        PlayerFactory.build(context, currentTrack, start)
+        PlayerFactory.build(context, currentTrack, start, preferSoftware = forceSoft)
     }
 
-    DisposableEffect(currentTrack.url, currentIndex) {
+    DisposableEffect(currentTrack.url, currentIndex, forceSoft) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                errText = "${error.errorCodeName}: ${error.message ?: ""}"
+                // 硬解解不了（如 10bit）→ 本集自动改用 FFmpeg 软解重试一次（DRM 不能软解，排除）
+                if (isDecodingError(error) && !forceSoft && !currentTrack.isDrmCommercial) {
+                    forceSoft = true
+                    errText = "硬解不支持该画质（常见于 10bit），已切到软解重试…"
+                } else {
+                    errText = friendlyPlaybackError(error)
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -156,7 +164,7 @@ fun PlayerScreen(
     }
 
     // 每 3 秒记一次进度（防中途被杀）
-    LaunchedEffect(currentTrack.url, currentIndex) {
+    LaunchedEffect(currentTrack.url, currentIndex, forceSoft) {
         while (true) {
             delay(3000)
             runCatching {
@@ -410,6 +418,24 @@ private fun fmtClock(ms: Long): String {
     val m = (total % 3600) / 60
     val s = total % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+/** 是否解码类失败（硬解解不了的编码/画质，如 10bit H.264）。 */
+private fun isDecodingError(e: androidx.media3.common.PlaybackException): Boolean =
+    e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED ||
+        e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+        e.errorCodeName.contains("DECODING")
+
+/** 把常见播放错误码翻成人话。 */
+private fun friendlyPlaybackError(e: androidx.media3.common.PlaybackException): String = when {
+    isDecodingError(e) ->
+        "本机硬解不支持该编码/画质（常见于 10bit 番）。下载不受影响；可到 设置 → 播放 改成「强制软解」再试。"
+    e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+        "服务器拒绝访问（可能需要 Referer/Cookie）"
+    e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+        e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+        "网络连接失败/超时"
+    else -> "${e.errorCodeName}: ${e.message ?: ""}"
 }
 
 private fun localTrack(f: File): Track = Track(

@@ -6,10 +6,12 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.taowu.backend.model.Track
 import com.taowu.backend.settings.AppSettings
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 
 /**
  * Media3/ExoPlayer 封装。
@@ -18,7 +20,16 @@ import com.taowu.backend.settings.AppSettings
  */
 object PlayerFactory {
 
-    fun build(context: Context, track: Track, startPositionMs: Long = 0L): ExoPlayer {
+    /**
+     * @param preferSoftware 强制用 FFmpeg 软解（硬解解 10bit 出绿屏/花屏、或硬解初始化失败时由上层重试触发）。
+     *   否则按设置 AppSettings.videoDecodeMode：auto=硬解优先软解兜底 / soft=强制软解 / hard=仅硬解。
+     */
+    fun build(
+        context: Context,
+        track: Track,
+        startPositionMs: Long = 0L,
+        preferSoftware: Boolean = false,
+    ): ExoPlayer {
         val ua = AppSettings.userAgent
         val isRemote = track.url.startsWith("http")
         val dsFactory: DataSource.Factory = if (isRemote) {
@@ -38,7 +49,22 @@ object PlayerFactory {
             DefaultDataSource.Factory(context)
         }
 
+        // 扩展渲染器模式：ON=平台(硬解)优先、平台解不了时用 FFmpeg 兜底；PREFER=强制软解；OFF=不用软解。
+        val estMode = if (preferSoftware) {
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+        } else {
+            when (AppSettings.videoDecodeMode) {
+                "soft" -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                "hard" -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                else -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            }
+        }
+        val renderersFactory = NextRenderersFactory(context)
+            .setExtensionRendererMode(estMode)
+            .setEnableDecoderFallback(true)
+
         val player = ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
 

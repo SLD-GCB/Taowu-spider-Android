@@ -62,7 +62,7 @@ class MediaResolver(
         if (tracks.isEmpty()) {
             return PageResolve(url, Route.NONE, emptyList(), listOf("配方「${entry.name}」未产出轨道"))
         }
-        return PageResolve(url, Route.RECIPE, reindex(dedupeTracks(tracks)), listOf("配方：${entry.name}"))
+        return PageResolve(url, Route.RECIPE, reindex(dropAds(dedupeTracks(tracks))), listOf("配方：${entry.name}"))
     }
 
     // ── 通用模式（静态扫描 + 适配器 + iframe 跳转） ─────────────
@@ -82,7 +82,7 @@ class MediaResolver(
         }
         val title = acc.pageTitle
         val tracks = acc.byKey.values.map { if (it.titleHint.isEmpty() && title.isNotEmpty()) it.copy(titleHint = title) else it }
-        return PageResolve(url, Route.STATIC, reindex(dedupeTracks(tracks)), acc.notes)
+        return PageResolve(url, Route.STATIC, reindex(dropAds(dedupeTracks(tracks))), acc.notes)
     }
 
     private suspend fun walkStatic(u: String, html: String?, finalUrl: String, depth: Int, acc: WalkAcc) {
@@ -145,6 +145,13 @@ class MediaResolver(
 
     private fun reindex(tracks: List<Track>): List<Track> =
         tracks.mapIndexed { i, t -> t.copy(index = i + 1) }
+
+    /** 广告过滤：按设置剔除广告域 / 广告流的候选轨道（避免把广告当视频抓/播）。 */
+    private fun dropAds(tracks: List<Track>): List<Track> {
+        if (!AppSettings.adFilterEnabled) return tracks
+        val extra = AdFilter.parseExtra(AppSettings.adFilterExtra)
+        return tracks.filterNot { AdFilter.isAd(it.url, extra) }
+    }
 
     private fun com.taowu.backend.parse.Candidate.toTrack(defaultClass: String): Track {
         val mediaClass = if (kind == "m3u8" || kind == "dash") "" else defaultClass

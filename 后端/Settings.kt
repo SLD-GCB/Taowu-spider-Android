@@ -87,6 +87,32 @@ object AppSettings {
         get() = str("extra_ep_link_regex", "")
         set(v) = putStr("extra_ep_link_regex", v)
 
+    /** 广告过滤：解析候选轨道与浏览器请求时，拦掉广告域 / 广告流（如 preroll、VAST、广告 CDN）。 */
+    var adFilterEnabled: Boolean
+        get() = bool("ad_filter", true)
+        set(v) = putBool("ad_filter", v)
+
+    /** 广告过滤的额外关键字（域名 / 路径子串，逗号或空格分隔，命中即拦）。 */
+    var adFilterExtra: String
+        get() = str("ad_filter_extra", "")
+        set(v) = putStr("ad_filter_extra", v)
+
+    // ── 文字采集 ────────────────────────────────────────────────
+    /** 文字采集用的默认字段模板名（空=用列表第一个）。 */
+    var fieldTemplate: String
+        get() = str("field_template", "")
+        set(v) = putStr("field_template", v)
+
+    /** 采集结果保留上限。 */
+    var collectMax: Int
+        get() = int("collect_max", 500).coerceIn(1, 100000)
+        set(v) = putInt("collect_max", v.coerceIn(1, 100000))
+
+    /** 内置浏览器是否「适配屏幕」（把没做手机适配的页面缩小到手机屏宽，整宽可见）。 */
+    var browserFit: Boolean
+        get() = bool("browser_fit", false)
+        set(v) = putBool("browser_fit", v)
+
     // ── 下载 ────────────────────────────────────────────────────
     /** HLS/DASH 分片并发窗口。 */
     var downloadConcurrency: Int
@@ -164,6 +190,17 @@ object AppSettings {
     var refererOverride: String
         get() = str("referer_override", "")
         set(v) = putStr("referer_override", v)
+
+    // ── 播放 / 解码 ──────────────────────────────────────────────
+    /**
+     * 视频解码模式：
+     *  · auto = 硬解优先，硬解解不了时用 FFmpeg 软解兜底（默认，兼容 10bit H.264）
+     *  · soft = 强制 FFmpeg 软解（硬解解 10bit 出绿屏/花屏时用）
+     *  · hard = 仅硬解（不用软解，省电；10bit 会播放失败）
+     */
+    var videoDecodeMode: String
+        get() = str("video_decode_mode", "auto")
+        set(v) = putStr("video_decode_mode", v)
 
     // ── 后处理 ──────────────────────────────────────────────────
     /** 视频下载后写元数据（旁挂 .info.json）。 */

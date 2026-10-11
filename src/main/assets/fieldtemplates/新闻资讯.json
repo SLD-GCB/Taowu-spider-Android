@@ -1,0 +1,66 @@
+{
+  "id": "新闻资讯",
+  "name": "新闻资讯",
+  "desc": "新闻/资讯正文页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "标题",
+      "type": "TEXT",
+      "rule": "新闻_标题"
+    },
+    {
+      "name": "作者",
+      "type": "TEXT",
+      "rule": "新闻_作者"
+    },
+    {
+      "name": "发布时间",
+      "type": "TEXT",
+      "rule": "新闻_发布时间"
+    },
+    {
+      "name": "栏目",
+      "type": "TEXT",
+      "rule": "新闻_栏目"
+    },
+    {
+      "name": "来源媒体",
+      "type": "TEXT",
+      "rule": "新闻_来源媒体"
+    },
+    {
+      "name": "关键词",
+      "type": "TEXT",
+      "rule": "新闻_关键词"
+    },
+    {
+      "name": "摘要",
+      "type": "TEXT",
+      "rule": "新闻_摘要"
+    },
+    {
+      "name": "正文",
+      "type": "TEXT",
+      "rule": "新闻_正文"
+    },
+    {
+      "name": "阅读量",
+      "type": "TEXT",
+      "rule": "新闻_阅读量"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

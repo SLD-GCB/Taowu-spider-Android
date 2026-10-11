@@ -1,0 +1,66 @@
+{
+  "id": "物流货运",
+  "name": "物流货运",
+  "desc": "物流/整车/零担货运信息页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "线路",
+      "type": "TEXT",
+      "rule": "物流_线路"
+    },
+    {
+      "name": "出发地",
+      "type": "TEXT",
+      "rule": "物流_出发地"
+    },
+    {
+      "name": "到达地",
+      "type": "TEXT",
+      "rule": "物流_到达地"
+    },
+    {
+      "name": "重量",
+      "type": "TEXT",
+      "rule": "物流_重量"
+    },
+    {
+      "name": "体积",
+      "type": "TEXT",
+      "rule": "物流_体积"
+    },
+    {
+      "name": "时效",
+      "type": "TEXT",
+      "rule": "物流_时效"
+    },
+    {
+      "name": "运费",
+      "type": "TEXT",
+      "rule": "物流_运费"
+    },
+    {
+      "name": "服务商",
+      "type": "TEXT",
+      "rule": "物流_服务商"
+    },
+    {
+      "name": "备注",
+      "type": "TEXT",
+      "rule": "物流_备注"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

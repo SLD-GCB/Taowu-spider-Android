@@ -81,35 +81,138 @@ object VideoMeta {
             }
         }
 
-        // ③ MacCMS / 通用海报兜底（页面无 og:image、无 JSON-LD image 时）
+        // ②b) <link rel="image_src" href="...">
+        if (cover.isEmpty()) {
+            for (m in Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE).findAll(html)) {
+                val tag = m.value
+                val rel = Regex("""rel\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(tag)?.groupValues?.get(1)?.lowercase() ?: continue
+                if ("image_src" in rel) {
+                    val h = attr(tag, "href")
+                    if (!h.isNullOrBlank()) { cover = MediaUtil.safeUnescape(h).trim(); break }
+                }
+            }
+        }
+
+        // ③ 通用海报兜底（og / JSON-LD / link 都没有时，分层识别各种形态）
         if (cover.isEmpty()) cover = findPoster(html) ?: ""
 
         if (cover.isNotEmpty()) cover = MediaUtil.normalize(cover, pageUrl) ?: cover
         return Meta(title.take(200), artist.take(120), desc.take(300), cover)
     }
 
-    /** 海报目录特征（MacCMS 的 /upload/vod/、常见 /cover/ /pic/ /poster/ 等）。 */
-    private val POSTER_HINT = Regex("""/(?:upload/vod|upload/pic|cover|pic|poster|vodpic|thumb)/""", RegexOption.IGNORE_CASE)
-    private val IMG_URL = Regex("""(https?://[^\s"'<>)\]]+?\.(?:jpg|jpeg|png|webp))""", RegexOption.IGNORE_CASE)
+    // ── 海报（封面）识别：从"最可信"到"最兜底"逐层尝试，覆盖各种形态 ──
 
-    /** 从页面里挑一张"像海报"的图：优先带 pic/cover/poster/thumb 类名的 <img>，其次命中海报目录的图片 URL，最后 background-image。 */
+    private val IMG_EXT = "(?:jpg|jpeg|png|webp|gif|bmp|avif)"
+
+    /** 图片 URL：绝对或相对（相对由上层 normalize 转绝对），支持查询串。 */
+    private val IMG_URL = Regex(
+        """((?:https?://[^\s"'<>)\]]+?|/[^\s"'<>)\]]+?)\.$IMG_EXT(?:\?[^\s"'<>)\]]*)?)""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** 海报目录特征（MacCMS 的 /upload/vod/，及 /cover /pic /poster /thumb /vodpic 等）。 */
+    private val POSTER_HINT = Regex(
+        """(?:upload/(?:vod|pic)|/cover|/pic[/.]|/poster|/vodpic|/thumb|pic\.|poster\.)""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** `<img>` 标签本身：class/id 带海报词。 */
+    private val IMG_CLASS_HINT = Regex(
+        """(?:class|id)\s*=\s*["'][^"']*(?:pic|cover|poster|thumb|vod|movie-img|gen-movie)[^"']*["']""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** `<img>` 所在的“海报容器”：它前面一小段里的 `class="…pic/poster/cover…"`。 */
+    private val POSTER_CONTAINER = Regex(
+        """class\s*=\s*["'][^"']*(?:detail-pic|vod-pic|vod-img|movie-pic|movie-img|play-pic|pic|poster|cover|thumb)[^"']*["']""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** 明显不是封面的图（logo / 图标 / 广告 / 占位等）。 */
+    private val NEG_HINT = Regex(
+        """(?:logo|/icon|icon\.|avatar|qrcode|/qr|sprite|emoji|/share|weibo|loading|placeholder|blank|spacer|guanggao|/ads?[/.]|banner|pixel|beacon|/bg[/.]|watermark)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val IMG_TAG = Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE)
+    private val SOURCE_TAG = Regex("""<source\b[^>]*>""", RegexOption.IGNORE_CASE)
+
+    /**
+     * 通用封面识别（多层，从最可信到最兜底）：
+     *  a) `<img>` 在海报容器内、或 class/id 命中海报词 → 懒加载属性/src；
+     *  b) 任意带懒加载属性（`data-src` 等）的 `<img>`（很多站海报无类名、只靠懒加载）；
+     *  c) `<video poster>` / `<picture><source srcset>` / `data-bg` 类；
+     *  d) CSS `background-image:url(...)`（优先命中海报目录的）；
+     *  e) 页面里命中海报目录的图片 URL；
+     *  f) 兜底：第一张“像图”的 `<img>`（排除 logo/图标/广告/占位）。
+     * **绝对与相对地址都返回**（上层 normalize 成绝对）。
+     */
     private fun findPoster(html: String): String? {
-        // a) <img> 类名/ id 带 pic|cover|poster|thumb
-        for (m in Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE).findAll(html)) {
+        // a) 海报容器内 或 class 命中海报词
+        for (m in IMG_TAG.findAll(html)) {
             val tag = m.value
-            if (!Regex("""(?:class|id)\s*=\s*["'][^"']*(?:pic|cover|poster|thumb)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(tag)) continue
-            val src = attr(tag, "data-original") ?: attr(tag, "data-src") ?: attr(tag, "src")
-            if (!src.isNullOrEmpty() && src.startsWith("http")) return src
+            val before = html.substring(maxOf(0, m.range.first - 220), m.range.first)
+            if (!IMG_CLASS_HINT.containsMatchIn(tag) && !POSTER_CONTAINER.containsMatchIn(before)) continue
+            lazySrc(tag)?.let { if (ok(it, tag)) return it }
         }
-        // b) 命中海报目录的任意图片 URL
+        // b) 任意带懒加载属性的 <img>
+        for (m in IMG_TAG.findAll(html)) {
+            lazyAttr(m.value)?.let { if (ok(it, m.value)) return it }
+        }
+        // c) <video poster> / <source srcset> / data-bg 类
+        Regex("""<video\b[^>]*\bposter\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", RegexOption.IGNORE_CASE)
+            .find(html)?.let { m ->
+                listOf(m.groupValues[1], m.groupValues[2], m.groupValues[3]).firstOrNull { it.isNotBlank() }?.let { if (ok(it)) return it }
+            }
+        for (m in SOURCE_TAG.findAll(html)) {
+            (attr(m.value, "srcset") ?: attr(m.value, "data-srcset"))?.let {
+                val u = it.split(",")[0].trim().split(" ").firstOrNull { s -> s.isNotBlank() }
+                if (!u.isNullOrBlank() && ok(u, m.value)) return u
+            }
+        }
+        for (n in listOf("data-bg", "data-background", "data-bg-src")) {
+            Regex("""\b$n\s*=\s*(?:"([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE).find(html)?.let { m ->
+                val u = listOf(m.groupValues[1], m.groupValues[2]).firstOrNull { it.isNotBlank() } ?: return@let
+                if (ok(u)) return u
+            }
+        }
+        // d) background-image:url(...)（优先海报目录）
+        Regex("""background(?:-image)?\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""", RegexOption.IGNORE_CASE)
+            .findAll(html).forEach { m ->
+                val u = m.groupValues[1].trim()
+                if (ok(u) && POSTER_HINT.containsMatchIn(u)) return u
+            }
+        // e) 命中海报目录的图片 URL
         for (m in IMG_URL.findAll(html)) {
             val u = m.groupValues[1]
-            if (POSTER_HINT.containsMatchIn(u)) return u
+            if (ok(u) && POSTER_HINT.containsMatchIn(u)) return u
         }
-        // c) background-image:url(...)
-        Regex("""background(?:-image)?\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""", RegexOption.IGNORE_CASE)
-            .find(html)?.groupValues?.get(1)?.let { if (it.startsWith("http")) return it }
+        // f) 兜底：第一张“像图”的 <img>
+        for (m in IMG_TAG.findAll(html)) {
+            val u = lazySrc(m.value) ?: continue
+            if (ok(u, m.value)) return u
+        }
         return null
+    }
+
+    /** 取出 `<img>` 的图片地址（懒加载优先，其次 srcset / src）。 */
+    private fun lazySrc(tag: String): String? {
+        lazyAttr(tag)?.let { return it }
+        attr(tag, "srcset")?.let { return it.split(",")[0].trim().split(" ").firstOrNull { s -> s.isNotBlank() } }
+        attr(tag, "src")?.let { if (it.isNotBlank() && !it.startsWith("data:")) return it }
+        return null
+    }
+
+    /** 只认懒加载属性（不含 src）——用于"任意懒加载图"这一层。 */
+    private fun lazyAttr(tag: String): String? {
+        for (n in listOf("data-original", "data-src", "data-lazy-src", "data-echo", "data-original-src", "data-url", "data-img", "data-image")) {
+            val v = attr(tag, n)
+            if (!v.isNullOrBlank() && !v.startsWith("data:")) return v
+        }
+        return null
+    }
+
+    /** 该 URL（及所在标签）是否"像封面"（非占位、非 logo/图标/广告）。 */
+    private fun ok(u: String, tag: String = ""): Boolean {
+        if (u.isBlank() || u.startsWith("data:") || u.startsWith("#")) return false
+        if (NEG_HINT.containsMatchIn(u)) return false
+        if (tag.isNotEmpty() && NEG_HINT.containsMatchIn(tag)) return false
+        return true
     }
 
     private fun attr(tag: String, name: String): String? =

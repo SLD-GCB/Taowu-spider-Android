@@ -1,0 +1,102 @@
+{
+  "id": "电商商品",
+  "name": "电商商品",
+  "desc": "电商商品详情/卡片页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "商品标题",
+      "type": "TEXT",
+      "rule": "标题_通用",
+      "synonyms": [
+        "宝贝标题",
+        "title"
+      ],
+      "clean": "title"
+    },
+    {
+      "name": "价格",
+      "rule": "价格_通用",
+      "type": "TEXT",
+      "synonyms": [
+        "售价",
+        "现价"
+      ],
+      "clean": "money"
+    },
+    {
+      "name": "原价",
+      "rule": "原价_通用",
+      "type": "TEXT",
+      "synonyms": [
+        "划线价",
+        "吊牌价"
+      ],
+      "clean": "money"
+    },
+    {
+      "name": "销量",
+      "rule": "销量_通用",
+      "type": "TEXT",
+      "synonyms": [
+        "月销",
+        "已售"
+      ],
+      "clean": "text"
+    },
+    {
+      "name": "店铺名",
+      "rule": "店铺_通用",
+      "type": "TEXT",
+      "synonyms": [
+        "店铺",
+        "旗舰店",
+        "专卖店"
+      ],
+      "clean": "text"
+    },
+    {
+      "name": "品牌",
+      "rule": "品牌_通用",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    },
+    {
+      "name": "型号",
+      "rule": "型号_通用",
+      "type": "TEXT",
+      "synonyms": [
+        "货号"
+      ],
+      "clean": "text"
+    },
+    {
+      "name": "规格",
+      "rule": "规格_通用",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    },
+    {
+      "name": "发货地",
+      "rule": "发货地_通用",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

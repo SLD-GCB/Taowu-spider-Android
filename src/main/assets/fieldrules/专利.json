@@ -1,0 +1,64 @@
+{
+  "_说明": "专利信息 字段规则库（规则名全库唯一，模板业务列只留 name/type/rule，改本文件即改本行业抽取）。synonyms=列名之外还要认的标签词；clean=形态/兜底(title/money/datetime/phone/link/longtext/text)；re=无标签裸值正则（仅当 标签/title 未命中才用）。",
+  "专利_专利名称": {
+    "clean": "title",
+    "synonyms": [
+      "发明名称"
+    ]
+  },
+  "专利_申请号": {
+    "clean": "text",
+    "synonyms": [
+      "申请编号",
+      "申请公开号"
+    ]
+  },
+  "专利_申请人": {
+    "clean": "text",
+    "synonyms": [
+      "专利权人",
+      "申请人名称"
+    ]
+  },
+  "专利_发明人": {
+    "clean": "text",
+    "synonyms": [
+      "设计人"
+    ]
+  },
+  "专利_分类号": {
+    "clean": "text",
+    "synonyms": [
+      "IPC分类",
+      "IPC分类号",
+      "国际专利分类号"
+    ]
+  },
+  "专利_申请日": {
+    "clean": "datetime",
+    "synonyms": [
+      "申请日"
+    ]
+  },
+  "专利_公开日": {
+    "clean": "datetime",
+    "synonyms": [
+      "公开日",
+      "公布日"
+    ]
+  },
+  "专利_摘要": {
+    "clean": "text",
+    "synonyms": [
+      "摘要内容",
+      "发明内容摘要"
+    ]
+  },
+  "专利_法律状态": {
+    "clean": "text",
+    "synonyms": [
+      "状态",
+      "当前状态"
+    ]
+  }
+}

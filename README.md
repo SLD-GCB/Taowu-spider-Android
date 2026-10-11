@@ -24,6 +24,7 @@
   - [⑥ 设置页](#-设置页)
 - [抓取流水线（原理）](#抓取流水线原理)
 - [配方（站点规则）](#配方站点规则)
+- [配方编写文档](#配方编写文档)
 - [抓取参数一览](#抓取参数一览)
 - [构建与打包](#构建与打包)
 - [项目结构](#项目结构)
@@ -50,7 +51,7 @@
 
 ## 界面与全套使用方法
 
-底部三个主栏：**捕获 / 内容 / 设置**。
+底部四个主栏：**捕获 / 采集 / 内容 / 设置**。
 
 ### ① 捕获页（内置浏览器）
 
@@ -119,18 +120,29 @@
 - **已下载**列表：列出已完成的文件，点击播放。
 - **播放页**：完整播放器（进度、选集列表在视频下方、横屏、记忆播放位置）。
 
+### 采集页（文字采集结果）
+
+把网页上的**结构化字段**（标题/作者/发布时间/正文/价格… 按行业模板）抽成一张表 —— 移植自 PC 版的"文字抓取"。
+
+- **怎么采**：在「捕获」浏览器里浏览到目标页 → 底部面板选 **字段模板** → 点 **「抓正文」**，当前页就抽成一条，累加到采集结果（可逐页采集，对应 PC 版的半自动批量）。
+- **采集页**：列出所有结果（一行一个页面），可 **单条删 / 清空 / 导出 CSV / 导出 JSON**（用系统文件选择器存你选的位置）。
+- **内置模板**：新闻资讯 / 电商商品 / 企业工商 / 房产租售 / 招标采购 / 政策文件 / 学术文献 / 专利/商标 … 共 **15 套**（走通用字段引擎，配套字段规则 15 套）；外加 **招聘信息**（走招聘专用正则抽取器，engine=recruit：企业名称/岗位/地点/薪资/学历/经验/职责/福利/联系方式）。
+- **规则**：`【标签】值` 与 `标签：值` 两种形态对位 → 逐列按「列名/同义词」查表 → 取不到再按形态兜底（金额/日期/电话/链接/长文本）。
+
 ### ⑥ 设置页
 
-顶部标签栏六个页签：
+顶部标签栏八个页签：
 
 | 页签 | 内容 |
 |---|---|
 | **媒体配方** | 查看内置配方、导入 / 删除用户配方（JSON） |
-| **解析** | 跳转层数、静态扫描开关、跟随 iframe、超时、重试次数/退避、混淆解码开关/轮数、分集识别门槛、额外分集链接正则 |
+| **解析** | 跳转层数、静态扫描开关、跟随 iframe、超时、重试次数/退避、混淆解码开关/轮数、分集识别门槛、额外分集链接正则、广告过滤（开关 + 额外关键字） |
 | **下载** | 分片并发、整部并行集数、重试、Range 分段数/触发大小、分片超时、解密方式 |
 | **节流** | 全局/单 host 并发上限、自适应并发开关 |
 | **请求头** | 全局 User-Agent、附加 Referer 覆盖 |
 | **后处理** | 视频元数据打标开关 |
+| **播放** | 视频解码：自动（硬解优先，软解兜底）/ 强制软解 / 仅硬解 |
+| **字段模板** | 文字采集的默认模板、采集上限；导入 / 删除用户模板与规则片段 |
 
 每页底部有 **「恢复全部默认」**。
 
@@ -219,6 +231,274 @@
 接口要签名时，用配方里的 **`browser_seam`**（真浏览器旁观页面发出的请求），而不是自己复现签名。
 
 > ⚠️ 见到 `#EXT-X-KEY:METHOD=SAMPLE-AES`、`skd://`、`edef8ba9`（Widevine）这类**商业 DRM**，属于做不了也不该做的范畴，直接弃站。
+
+---
+
+## 配方编写文档
+
+两类配方，都是**纯 JSON（数据不是代码）**：
+
+| | 媒体配方 | 文字配方 |
+|---|---|---|
+| 作用 | 描述某站「怎么取视频/媒体流」→ 产出轨道 | 描述「网页字段怎么抽」→ 产出一行结构化数据 |
+| 内置位置 | `src/main/assets/recipes/` | `src/main/assets/fieldtemplates/` + `fieldrules/` |
+| 用户导入 | 设置 → **媒体配方** → 导入 | 设置 → **文字配方** → 导入 |
+
+文件名以 `_` 开头者引擎不扫（可当模板留着，永不生效）。
+
+---
+
+### 一、媒体配方
+
+#### 1. 顶层字段（白名单：出现未知键直接校验失败）
+
+| 键 | 必填 | 说明 |
+|---|---|---|
+| `schema_version` | | 固定 `1` |
+| `name` | ✅ | 配方名（唯一、用于展示） |
+| `desc` | | 备注 |
+| `enabled` | | 默认 `true` |
+| `order` | | 同站多配方的优先级（数字） |
+| `host_suffix` | ✅ | 命中域名（字符串或数组），含子域 |
+| `short_hosts` | | 短链域名（可选） |
+| `cookies` | | `none`/`session`/`jar`/`session+jar`，默认 `jar` |
+| `session` | | 见 §2 |
+| `identity` | | 从 URL 抽变量，见 §2 |
+| `steps` | | 取数步骤，见 §3 |
+| `emit` | ✅* | 产出轨道，见 §5（有 `browser_seam`/`episode_link` 时可无） |
+| `episode_link` | | 非标准分集链接形状，见 §6 |
+| `browser_seam` | | **当前引擎未实现**（写了不生效） |
+
+#### 2. session / identity
+
+```jsonc
+"session": { "user_agent": "...", "referer": "https://www.example.com/",
+             "headers": {"Accept-Language": "zh-CN,zh;q=0.9"},
+             "bootstrap": {"url":"...", "method":"GET", "timeout":15} },
+"identity": { "any_of": [ [                       // 至少要有 any_of 或 all_of
+    {"name":"base", "from":"url", "pattern":"^(https?://[^/]+)"},
+    {"name":"vid",  "from":"url", "pattern":"/v/(\\d+)\\.html"} ] ] }
+```
+`name`=变量名、`pattern`=正则（捕获组 1 存入）；`query` 可从查询串取参。多个候选组会用「第一组命中的」。
+
+#### 3. steps（取数）
+
+```jsonc
+{ "name":"取播放信息", "method":"GET", "url":"https://api.example.com/play?id={vid}",
+  "alt_url":["...","..."], "referer":"{base}/v/{vid}.html", "headers":{...}, "cookies":{...},
+  "timeout": 15, "as": "play",                 // 结果存进变量 play
+  "when":[{...}],                              // 条件（见 §4）
+  "parse": {"re":"player_aaaa\\s*=\\s*(\\{.*?\\})", "json":true, "index":0, "unescape":true},
+  "expect":[{...}],                            // 校验；不满足 → 本步失败
+  "ladder": {"var":"q", "values":[{"...":1}]}, // 阶梯试
+  "required": true }
+```
+- **`parse` 只支持 GET**（它要的是响应原文来抠内联 JSON）；`re` 建议带 1 个捕获组，`json:true` 时把捕获片段当 JSON 解析，`unescape` 控制 HTML 实体解码。
+- `alt_url` / `alt_referer` 是**候选列表**：程序自动挑“占位符齐备”的那条（如粘详情页走 A、粘播放页走 B）。
+
+#### 4. 条件（`when` / `expect` / 各处 cond）
+
+`{"path":"play.data.url","op":"nonempty","value":...}`。无 `op` 时：**有 `value` → `eq`，无 `value` → `exists`**。
+
+- 比较：`eq ne gt ge lt le in nin contains contains_i re startswith endswith any_re all_re any_eq all_eq`
+- 布尔：`exists nonempty empty truthy falsy`
+- 长度：`len_eq len_ne len_gt len_ge len_lt len_le`
+- 组合：`{"any":[…]} / {"all":[…]} / {"not":{…}}`
+
+#### 5. emit（产出轨道）
+
+```jsonc
+"emit": [ {
+  "when": [...],
+  "set":  { "whs": {"join":[{"path":"w"},{"path":"h"}], "sep":"x"} },   // 算中间变量
+  "loop": { "path":"play.data.list", "as":"item", "index_as":"n",      // 分P/分集
+            "episode_param":"p", "fallback":[…], "max":500, "pause":0.5 },
+  "produce": [ {"name":"优先HLS","when":[…],"track":{…},"stop":true},
+               {"name":"退回直链","track":{…}} ],                        // 多形态择优
+  "track": { … }
+} ]
+```
+
+**track 键**：
+
+| 键 | 说明 |
+|---|---|
+| `kind` | `direct`/`m3u8`/`dash`（别名 `hls`/`mpd`）；留空 = `direct` |
+| `url` | 取值表达式（见下） |
+| `ext` | 落盘扩展名（direct 时用，如 mp4/m4a/ts） |
+| `media_class` | `video`/`audio`/`""`（空 = 按清单猜） |
+| `title_hint` `duration_s` `note` | 元信息 |
+| `ephemeral` | 时效直链标 `true`（界面提示尽快下） |
+| `cookies` | 该轨专用的 cookie |
+| `parts` | 分轨：DASH 视频/音频分开时，每项 `{media_class,kind,url,ext,note}`，程序自动合流 |
+| `drm` | 仅标注，不解密 |
+
+**produce** = 多形态择优：按顺序试，`stop:true` 命中即停（防止同一视频出两条重复轨）。
+
+**取值表达式**（track.url / set / 条件 value 里通用）：
+- `{"path":"a.b[0].c"}` 取变量路径；`{"const":值}` 常量；纯字符串里 `{var}` 会插值；
+- 加工算子：`int` `float` `str` `ext_of`（取扩展名）`whitelist` `len` `size` `bool` `not` `any` `add/sub/mul/div` `max/min` `join`(配 `sep`) `list` `match`(={path,pattern,group,default}) `default`(兜底) `template` `pick`。
+
+**pick（选优，挑清晰度）**：
+```jsonc
+{"pick": {"path":"play.data.quality",
+          "where":[{"path":"codec","op":"ne","value":"h265"}],
+          "sort":[{"mul":["width","height"]},{"path":"bitrate"}],
+          "require_len":1, "take":0}}
+```
+`where` 里路径相对候选元素；`sort` 靠前的键优先（默认倒序）；`require_len` 不足则整体返回空。
+
+#### 6. episode_link（非标准分集形状）
+
+```json
+"episode_link": { "re": "^playGV(\\d+)-(\\d+)-(\\d+)$", "line": 2, "ep": 3 }
+```
+`re` 匹配**锚点路径**（去掉首斜杠后）；第 1 组=分组、`line` 指线路组号、`ep` 指集号（1..9）。它只给**通用模式**当规则用、不产出轨道。
+
+#### 7. 红线（校验直接拒绝）
+
+以下键名出现在**任何层级**即校验失败：
+`sign signature sign_url a_bogus abogus wbi nsig n_sig decrypt decode decipher key keys license widevine playready fairplay clearkey captcha verify_code token_gen potoken botguard eval exec script js javascript code python lambda expr`。
+即：**不生成签名、不解密、不破验证码、不执行脚本**。
+
+#### 8. 注意事项
+
+- 正则反斜杠写**两个** `\\d`；字符串里别用未转义的双引号。
+- `kind` 必须是三值之一，写错会被拒。
+- 站点把地址放在**加密串**（MacCMS `player_aaaa.encrypt≠0`）→ **配方拿不到**（红线不解码）；但**通用模式**能解（程序自己解）。所以这类站别写配方，直接走通用模式。
+- 接口要签名（`a_bogus`/`wbi`…）→ 配方做不了，也走通用模式或弃站。
+- `desc` 与所有 `_` 开头的键随便写注释。
+
+#### 9. 完整示例（接口型）
+
+```json
+{
+  "schema_version": 1, "name": "example", "host_suffix": ["example.com"],
+  "enabled": true, "order": 150, "cookies": "none",
+  "session": { "referer": "https://www.example.com/" },
+  "identity": { "any_of": [ [ {"name":"vid","from":"url","pattern":"/video/(\\d+)"} ] ] },
+  "steps": [ { "name":"取播放信息", "url":"https://api.example.com/play?id={vid}",
+               "referer":"https://www.example.com/video/{vid}", "as":"play",
+               "expect":[{"path":"play.code","op":"eq","value":0}] } ],
+  "emit": [ { "when":[{"path":"play.data.url","op":"nonempty"}],
+              "track": { "media_class":"video", "kind":"hls",
+                         "url":{"path":"play.data.url"},
+                         "title_hint":{"path":"play.data.title"} } } ]
+}
+```
+
+---
+
+### 二、文字配方
+
+一份 JSON = **数据表模板** 或 **字段规则片段**，**按形状自动识别**：
+
+- 顶层有**非空 `columns[]`** → **字段模板**（进「默认模板」下拉、可建表）；
+- 否则是 `{规则名:{...}}` → **规则片段**（导入即并入规则库，不用选）。
+
+内置：`assets/fieldtemplates/*.json`（模板 15 套 + 招聘 1 套）+ `assets/fieldrules/*.json`（规则 15 套）。
+
+#### 1. 字段模板结构
+
+```jsonc
+{
+  "id": "新闻资讯", "name": "新闻资讯", "desc": "新闻/资讯正文页",
+  "engine": "schema_v2",                     // 见 §6
+  "columns": [
+    { "name":"标题",   "type":"TEXT", "rule":"新闻_标题" },
+    { "name":"价格",   "type":"REAL", "clean":"money", "synonyms":["售价"],
+      "re":["￥(\\d+\\.?\\d*)"] },
+    { "name":"job_url", "type":"TEXT", "clean":"link" },
+    { "name":"source",  "type":"TEXT", "clean":"text" }
+  ]
+}
+```
+
+列字段：
+
+| 键 | 说明 |
+|---|---|
+| `name` | **必填**。列名（= 抽出结果的键）；抽取时也是**第一个要认的标签** |
+| `type` | 建表列类型：`TEXT/INTEGER/REAL/BLOB`（写别的降级 TEXT） |
+| `clean` | 形态兜底（见 §4） |
+| `synonyms` | 列名之外**还要认的标签词**（`标签：值` 里的标签） |
+| `re` | 无标签裸值时的**列内正则**（取第 1 捕获组） |
+| `rule` | 引用**规则库**里的规则名（见 §5） |
+
+#### 2. 规则片段结构
+
+```json
+{ "新闻_标题": { "clean":"title", "synonyms":["新闻标题"] },
+  "价格_通用": { "clean":"money", "synonyms":["价格","售价"], "re":["￥(\\d+\\.?\\d*)"] } }
+```
+规则字段：`synonyms[]` / `clean` / `re[]`（含义同上）。规则名**全库唯一**；**与内置同名 = 覆盖内置**。
+
+#### 3. 抽取优先级（每一列）
+
+```
+列名 → synonyms → (clean=title 时用页面标题) → 列内 re → clean 形态兜底 → job_url/source 回填
+```
+页面文本里标签取自两种形态：**`【标签】值`**（优先）与 **`标签：值`**。抽不到 → 空串（**不报错**，落库空列）。
+
+#### 4. clean 取值
+
+| clean | 标签未命中时的兜底 | 归一化 |
+|---|---|---|
+| `text`（默认） | 无形态兜底 | 压平空白 |
+| `title` | 页面标题（h1 / og:title / `<title>`） | 压平空白 |
+| `longtext` | 无 | 保留换行、截断 8000 |
+| `money` | `¥/￥金额` 或 `数字+元/万元/RMB` | 去千分位 |
+| `datetime` | `20xx年/月/日[时:分]` | → `YYYY-MM-DD[ HH:MM]` |
+| `phone` | 手机 / 固话 | 取匹配片段 |
+| `link` | `http(s)://…`（**全文**找） | 取匹配片段 |
+| `int` | 第一串数字 | 去逗号 |
+
+#### 5. `rule` 与列的合并语义
+
+列引用了 `rule` 时：
+- `type` / `clean`：**列内覆盖规则**；
+- `synonyms`：**规则在前 + 列内追加**（去重）；
+- `re`：**列内在前 + 规则追加**（去重；列内更精确优先）。
+
+#### 6. engine（走哪套抽取器）
+
+| engine | 行为 |
+|---|---|
+| `schema_v2` | 通用抽取（§3 的优先级 + `clean` 兜底）——大多数行业模板用这个 |
+| `recruit` | **招聘专用正则抽取器**（企业名称/岗位/地点/薪资/学历/经验/职责/福利/联系方式）；列只用于**展示顺序**，不依赖 synonyms/re |
+
+#### 7. 注意事项（踩坑清单）
+
+- 表名 / 列名：非空、≤64 字符，不含反引号 `` ` `` / 分号 / 换行；列名**不能用 `id`**、同份内不能重名。
+- `type` 只能是 `TEXT/INTEGER/REAL/BLOB`。
+- `re` 一定写**捕获组 `()`**；反斜杠写两个 `\\d`；坏正则会当场被拦。
+- 引用 `rule` 的规则名**必须先在规则库里存在**（先导规则片段，再导引用它的模板）。
+- 字符串里别用未转义双引号（会破坏 JSON），用 `「」`。
+- 文件名不能以 `_` 开头、必须是 `.json`。
+- **同名用户配置覆盖内置**；用户的可删、内置只读。
+
+#### 8. 完整示例（规则片段 + 字段模板）
+
+规则片段 `my_rules.json`：
+
+```json
+{ "新闻_标题":     { "clean": "title",    "synonyms": ["新闻标题"] },
+  "新闻_发布时间": { "clean": "datetime", "synonyms": ["发布时间","时间"] },
+  "新闻_阅读量":   { "clean": "text",     "synonyms": ["阅读量","浏览量"],
+    "re": ["([0-9][0-9,]*(?:\\.[0-9]+)?万?)\\s*\\+?\\s*(?:次阅读|人阅读|浏览量)"] } }
+```
+
+字段模板 `我的新闻表.json`：
+
+```json
+{ "id":"我的新闻表", "name":"我的新闻表", "desc":"我的新闻页", "engine":"schema_v2",
+  "columns":[
+    {"name":"标题",     "type":"TEXT", "rule":"新闻_标题"},
+    {"name":"发布时间", "type":"TEXT", "rule":"新闻_发布时间"},
+    {"name":"阅读量",   "type":"TEXT", "rule":"新闻_阅读量"},
+    {"name":"job_url",  "type":"TEXT", "clean":"link"},
+    {"name":"source",   "type":"TEXT", "clean":"text"} ] }
+```
 
 ---
 
@@ -313,9 +593,10 @@ taowu-android/
 │   ├── EpisodesScreen.kt    # 分集列表
 │   ├── SeriesScreen.kt      # 整部抓取
 │   ├── ContentScreen.kt     # 内容页（下载中/已下载）
+│   ├── CollectScreen.kt     # 采集页（文字采集结果）
 │   ├── PlayerScreen.kt      # 播放页
 │   ├── PlayerFactory.kt / PlayContext.kt
-│   ├── SettingsScreen.kt    # 设置页（六页签）
+│   ├── SettingsScreen.kt    # 设置页（八页签）
 │   └── Theme.kt             # 配色（深青底 + 虎纹金）
 ├── 后端/                    # 后端（Kotlin）
 │   ├── BackendContainer.kt  # 装配引擎/注册表/解析器/下载器，载入配方
@@ -332,9 +613,12 @@ taowu-android/
 │   ├── NetEngine.kt / MediaHeaders.kt  # 网络与请求头
 │   ├── Throttle.kt          # 并发闸门 + 自适应
 │   ├── Naming.kt / Path.kt / MediaUtil.kt / VideoMeta.kt
+│   ├── field/               # 文字采集：SchemaExtract(抽取引擎) / FieldSchema(模板规则) / CollectStore(结果+导出)
 │   └── Settings.kt          # AppSettings（SharedPreferences 持久化）
-├── src/main/assets/recipes/ # 内置配方
-├── src/test/kotlin/         # JVM 单测（EpisodePlan / SavedSources / StaticExtract / Resolver）
+├── src/main/assets/recipes/ # 内置媒体配方
+├── src/main/assets/fieldrules/     # 文字采集：字段规则（15 套行业）
+├── src/main/assets/fieldtemplates/ # 文字采集：数据表模板（15 套 + 招聘信息）
+├── src/test/kotlin/         # JVM 单测
 ├── dist/                    # 打包产物
 ├── build.gradle.kts / settings.gradle.kts / proguard-rules.pro
 ├── 打包APK.bat / 打包Release.bat / 还原崩溃栈.bat
@@ -347,6 +631,7 @@ taowu-android/
 
 - **语言 / UI**：Kotlin + Jetpack Compose（Material3），Navigation-Compose
 - **播放 / 转码**：Media3（ExoPlayer + HLS + DASH + OkHttp data source + Transformer）
+- **软解后端**：NextLib（FFmpeg → Media3 扩展，`io.github.anilbeesetti:nextlib-media3ext`），硬解优先、软解兜底，支持 10bit H.264 / HEVC 等
 - **网络**：OkHttp
 - **序列化**：kotlinx.serialization（JsonElement 动态解析）
 - **并发**：kotlinx.coroutines（Flow / 结构化并发 / 协作式取消）
@@ -369,6 +654,17 @@ taowu-android/
 **Q：站内分了 `/playXXX-线-集/` 这种非标准形状，分集列表认不全？**
 在 设置 → 解析 → **「额外分集链接正则」** 填对应形状（3 个捕获组：分组 / 线路 / 集），
 或写进站点配方的 `episode_link` 字段。
+
+**Q：怎么避免把广告当视频抓下来？**
+默认已开启**广告过滤**（设置 → 解析 → 广告过滤）。它做两件事：
+① 解析候选轨道时剔除广告流（preroll / VAST / 广告 CDN 等域名与路径词）；
+② 内置浏览器拦掉广告域请求。误伤正常视频时，可临时关掉开关，或在「额外关键字」里精确补充。
+
+**Q：某个番/某集播放报错 `ERROR_CODE_DECODING_FAILED`（或 `NO_EXCEEDS_CAPABILITIES`）？**
+该片源是 **10bit（H.264 High 10 Profile）**，本机硬件解码器不支持。
+本 App 已内置 **FFmpeg 软解**：默认「自动」会在硬解失败时**自动切软解重试**，通常直接就能播。
+若仍不行（或硬解能过但花屏/绿屏），到 **设置 → 播放 → 视频解码** 选 **「强制软解」**。
+注意：**在线播放**受此影响，**下载不受影响**（只搬分片不解码），下载后可用支持 10bit 的 PC 播放器播放。
 
 **Q：浏览器里能看，点抓取却没结果？**
 浏览器的 Cookie 与抓取引擎（OkHttp）各自独立。若该站靠 Cookie / 验证放行，抓取时可能被拦。

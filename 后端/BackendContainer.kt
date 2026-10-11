@@ -6,6 +6,7 @@ import com.taowu.backend.download.Downloader
 import com.taowu.backend.download.Naming
 import com.taowu.backend.download.Throttle
 import com.taowu.backend.grab.Grabber
+import com.taowu.backend.field.FieldSchema
 import com.taowu.backend.media.Remuxer
 import com.taowu.backend.net.OkHttpNetEngine
 import com.taowu.backend.registry.RecipeInfo
@@ -47,6 +48,8 @@ class BackendContainer(private val context: Context) {
     init {
         // 启动自适应并发控制器（全局 + 单 host 闸门按吞吐自动升降）
         Throttle.startController(scope)
+        // 装载文字采集的字段模板 / 规则库
+        FieldSchema.init(context)
     }
 
     var loadedRecipeCount: Int = 0

@@ -1,0 +1,66 @@
+{
+  "id": "政策文件",
+  "name": "政策文件",
+  "desc": "政府/机构政策法规正文页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "标题",
+      "type": "TEXT",
+      "rule": "政策_标题"
+    },
+    {
+      "name": "发文字号",
+      "type": "TEXT",
+      "rule": "政策_发文字号"
+    },
+    {
+      "name": "发文机关",
+      "type": "TEXT",
+      "rule": "政策_发文机关"
+    },
+    {
+      "name": "发布日期",
+      "type": "TEXT",
+      "rule": "政策_发布日期"
+    },
+    {
+      "name": "施行日期",
+      "type": "TEXT",
+      "rule": "政策_施行日期"
+    },
+    {
+      "name": "效力级别",
+      "type": "TEXT",
+      "rule": "政策_效力级别"
+    },
+    {
+      "name": "主题分类",
+      "type": "TEXT",
+      "rule": "政策_主题分类"
+    },
+    {
+      "name": "正文",
+      "type": "TEXT",
+      "rule": "政策_正文"
+    },
+    {
+      "name": "备注",
+      "type": "TEXT",
+      "rule": "政策_备注"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

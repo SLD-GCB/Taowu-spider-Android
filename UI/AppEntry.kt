@@ -21,6 +21,7 @@ import com.taowu.ui.theme.UiColors
 /** 路由名：三个底部栏目 + 捕获流程的子页。 */
 object Routes {
     const val CAPTURE = "capture"
+    const val COLLECT = "collect"
     const val CONTENT = "content"
     const val SETTINGS = "settings"
     const val RESOLVE = "resolve"
@@ -43,7 +44,8 @@ fun AppEntry(container: BackendContainer) {
     var playingTrack by remember { mutableStateOf<Track?>(null) }
     var playCtx by remember { mutableStateOf<PlayContext?>(null) }
 
-    val isTopTab = route == Routes.CAPTURE || route == Routes.CONTENT || route == Routes.SETTINGS
+    val isTopTab = route == Routes.CAPTURE || route == Routes.COLLECT ||
+        route == Routes.CONTENT || route == Routes.SETTINGS
 
     fun goPlay(track: Track, ctx: PlayContext?) {
         playingTrack = track
@@ -84,6 +86,9 @@ fun AppEntry(container: BackendContainer) {
                         )
                     },
                 )
+            }
+            composable(Routes.COLLECT) {
+                CollectScreen()
             }
             composable(Routes.CONTENT) {
                 ContentScreen(

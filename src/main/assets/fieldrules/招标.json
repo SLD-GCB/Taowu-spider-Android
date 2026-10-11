@@ -1,0 +1,70 @@
+{
+  "_说明": "招标采购 字段规则库（规则名全库唯一，模板业务列只留 name/type/rule，改本文件即改本行业抽取）。synonyms=列名之外还要认的标签词；clean=形态/兜底(title/money/datetime/phone/link/longtext/text)；re=无标签裸值正则（仅当 标签/title 未命中才用）。",
+  "招标_项目名称": {
+    "clean": "title",
+    "synonyms": [
+      "工程名称",
+      "采购项目",
+      "招标项目"
+    ]
+  },
+  "招标_项目编号": {
+    "clean": "text",
+    "synonyms": [
+      "招标编号",
+      "采购编号",
+      "公告编号"
+    ]
+  },
+  "招标_采购人": {
+    "clean": "text",
+    "synonyms": [
+      "招标人",
+      "采购单位",
+      "业主单位"
+    ]
+  },
+  "招标_代理机构": {
+    "clean": "text",
+    "synonyms": [
+      "招标代理",
+      "采购代理"
+    ]
+  },
+  "招标_预算金额": {
+    "clean": "money",
+    "synonyms": [
+      "采购预算",
+      "项目预算",
+      "预算"
+    ]
+  },
+  "招标_开标时间": {
+    "clean": "datetime",
+    "synonyms": [
+      "开标日期"
+    ]
+  },
+  "招标_投标截止": {
+    "clean": "datetime",
+    "synonyms": [
+      "投标截止时间",
+      "递交截止时间",
+      "截止时间"
+    ]
+  },
+  "招标_开标地点": {
+    "clean": "text",
+    "synonyms": [
+      "开标场所"
+    ]
+  },
+  "招标_联系电话": {
+    "clean": "phone",
+    "synonyms": [
+      "联系方式",
+      "电话",
+      "联系人电话"
+    ]
+  }
+}

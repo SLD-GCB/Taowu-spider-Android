@@ -1,0 +1,66 @@
+{
+  "id": "商标信息",
+  "name": "商标信息",
+  "desc": "商标公告/详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "商标名称",
+      "type": "TEXT",
+      "rule": "商标_商标名称"
+    },
+    {
+      "name": "注册号",
+      "type": "TEXT",
+      "rule": "商标_注册号"
+    },
+    {
+      "name": "申请人",
+      "type": "TEXT",
+      "rule": "商标_申请人"
+    },
+    {
+      "name": "申请日期",
+      "type": "TEXT",
+      "rule": "商标_申请日期"
+    },
+    {
+      "name": "国际分类",
+      "type": "TEXT",
+      "rule": "商标_国际分类"
+    },
+    {
+      "name": "商标状态",
+      "type": "TEXT",
+      "rule": "商标_商标状态"
+    },
+    {
+      "name": "有效期至",
+      "type": "TEXT",
+      "rule": "商标_有效期至"
+    },
+    {
+      "name": "代理机构",
+      "type": "TEXT",
+      "rule": "商标_代理机构"
+    },
+    {
+      "name": "图片链接",
+      "type": "TEXT",
+      "rule": "商标_图片链接"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

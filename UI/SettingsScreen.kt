@@ -43,16 +43,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taowu.backend.BackendContainer
+import com.taowu.backend.field.FieldSchema
 import com.taowu.backend.registry.RecipeInfo
 import com.taowu.backend.settings.AppSettings
 import com.taowu.ui.theme.UiColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
-private val SETTINGS_TABS = listOf("媒体配方", "解析", "下载", "节流", "请求头", "后处理")
+private val SETTINGS_TABS = listOf("媒体配方", "文字配方", "解析", "下载", "节流", "请求头", "后处理", "播放")
+
+/** 视频解码模式下拉项：key → 显示名。 */
+private val DECODE_OPTIONS = listOf(
+    "auto" to "自动（硬解优先，软解兜底）",
+    "soft" to "强制软解（10bit 花屏时）",
+    "hard" to "仅硬解（省电，10bit 会失败）",
+)
 
 /** 解密方式下拉项：key → 显示名。 */
 private val DECRYPT_OPTIONS = listOf(
@@ -90,7 +100,7 @@ fun SettingsScreen(container: BackendContainer) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = UiColors.text)
             Text(
-                "梼杌 v3.4　·　已载入配方 ${container.loadedRecipeCount} 份",
+                "梼杌 v5.3　·　已载入配方 ${container.loadedRecipeCount} 份",
                 color = UiColors.muted,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -128,11 +138,13 @@ fun SettingsScreen(container: BackendContainer) {
             ) { page ->
                 when (page) {
                     0 -> RecipeTab(container, bump, scrollStates[0])
-                    1 -> ParseTab(bump, scrollStates[1])
-                    2 -> DownloadTab(bump, scrollStates[2])
-                    3 -> ThrottleTab(bump, scrollStates[3])
-                    4 -> HeaderTab(bump, scrollStates[4])
-                    else -> PostTab(bump, scrollStates[5])
+                    1 -> FieldTab(bump, scrollStates[1])
+                    2 -> ParseTab(bump, scrollStates[2])
+                    3 -> DownloadTab(bump, scrollStates[3])
+                    4 -> ThrottleTab(bump, scrollStates[4])
+                    5 -> HeaderTab(bump, scrollStates[5])
+                    6 -> PostTab(bump, scrollStates[6])
+                    else -> PlayTab(bump, scrollStates[7])
                 }
             }
         }
@@ -273,6 +285,25 @@ private fun ParseTab(onChange: () -> Unit, scroll: ScrollState) {
             )
         }
 
+        // 广告过滤
+        ParamCard {
+            Text("广告过滤", color = UiColors.text, fontWeight = FontWeight.SemiBold)
+            BoolSetting("启用广告过滤", AppSettings.adFilterEnabled) { AppSettings.adFilterEnabled = it; onChange() }
+            var adExtra by remember { mutableStateOf(AppSettings.adFilterExtra) }
+            OutlinedTextField(
+                value = adExtra,
+                onValueChange = { adExtra = it; AppSettings.adFilterExtra = it },
+                label = { Text("额外关键字（域名/路径子串，逗号或空格分隔）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "解析时剔除广告流（preroll/VAST/广告 CDN 等），避免把广告当视频抓下来；" +
+                    "浏览器里也会拦掉广告域请求。命中规则：内置广告域名 + 路径广告词（整词）+ 上面的额外关键字。",
+                style = MaterialTheme.typography.bodySmall,
+                color = UiColors.muted,
+            )
+        }
+
         ResetButton(onChange)
     }
 }
@@ -347,6 +378,149 @@ private fun PostTab(onChange: () -> Unit, scroll: ScrollState) {
             BoolSetting("视频下载后写元数据", AppSettings.videoMetaTagging) { AppSettings.videoMetaTagging = it; onChange() }
         }
         ResetButton(onChange)
+    }
+}
+
+// ── 播放 ────────────────────────────────────────────────────────
+@Composable
+private fun PlayTab(onChange: () -> Unit, scroll: ScrollState) {
+    SettingsScroll(scroll) {
+        ParamCard {
+            Text(
+                "自动=硬解优先、软解兜底；强制软解用于硬解花屏；仅硬解最省电但 10bit 会失败",
+                style = MaterialTheme.typography.bodySmall,
+                color = UiColors.muted,
+                maxLines = 2,
+            )
+            ChoiceSetting("视频解码", DECODE_OPTIONS, AppSettings.videoDecodeMode) { AppSettings.videoDecodeMode = it; onChange() }
+        }
+        ResetButton(onChange)
+    }
+}
+
+// ── 文字配方（文字抓取的 JSON 配置：数据表模板 + 字段规则）────────────
+@Composable
+private fun FieldTab(onChange: () -> Unit, scroll: ScrollState) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf("") }
+    var list by remember { mutableStateOf(FieldSchema.templateList()) }
+    var userCfgs by remember { mutableStateOf(FieldSchema.userConfigs()) }
+
+    fun refresh() {
+        list = FieldSchema.templateList()
+        userCfgs = FieldSchema.userConfigs()
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            status = "导入中…"
+            val (name, text) = withContext(Dispatchers.IO) { readPickedRecipe(context, uri) }
+            if (text == null) { status = "读取文件失败"; return@launch }
+            val err = withContext(Dispatchers.IO) {
+                runCatching {
+                    val stem = (name ?: "fieldcfg").substringBeforeLast(".json")
+                        .replace(Regex("[^A-Za-z0-9_\\u4e00-\\u9fa5.-]"), "_").ifEmpty { "cfg_${System.currentTimeMillis()}" }
+                    File(FieldSchema.userDir(context), "$stem.json").writeText(text)
+                    null
+                }.getOrElse { it.message ?: "写入失败" }
+            }
+            FieldSchema.reload(context)
+            refresh()
+            status = if (err == null) "已导入：${name ?: "配置"}（模板 ${list.size} · 规则 ${FieldSchema.ruleCount()}）" else "导入失败：$err"
+            onChange()
+        }
+    }
+
+    SettingsScroll(scroll) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { picker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                modifier = Modifier.weight(1f),
+            ) { Text("导入文字配方…") }
+            OutlinedButton(
+                onClick = { FieldSchema.reload(context); refresh(); status = "已重新载入" },
+                modifier = Modifier.weight(1f),
+            ) { Text("重新载入") }
+        }
+        Text(
+            "文字抓取用的 JSON 配置：\n" +
+                "· 含 columns[] 的当作「数据表模板」；\n" +
+                "· {规则名:{...}} 的当作「字段规则」片段并入规则库。\n" +
+                "同名用户配置覆盖内置；用户导入的可删除，内置的只读。",
+            style = MaterialTheme.typography.bodySmall,
+            color = UiColors.muted,
+        )
+        if (status.isNotEmpty()) {
+            Text(status, style = MaterialTheme.typography.bodySmall, color = UiColors.link)
+        }
+
+        ParamCard {
+            Text("文字采集", color = UiColors.text, fontWeight = FontWeight.SemiBold)
+            ChoiceSetting(
+                "默认字段模板",
+                list.map { it.name to it.name },
+                AppSettings.fieldTemplate.ifBlank { list.firstOrNull()?.name ?: "" },
+            ) { AppSettings.fieldTemplate = it; onChange() }
+            IntSetting("采集结果上限", AppSettings.collectMax, 1, 100000) { AppSettings.collectMax = it; onChange() }
+        }
+
+        Text("数据表模板（${list.size}）", color = UiColors.text, fontWeight = FontWeight.SemiBold)
+        if (list.isEmpty()) {
+            Text("（暂无模板）", color = UiColors.muted, style = MaterialTheme.typography.bodySmall)
+        } else {
+            for (t in list) {
+                Card(colors = CardDefaults.cardColors(containerColor = UiColors.surface), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(t.name, color = UiColors.text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            Text(
+                                if (t.source == "user") "用户" else "内置",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (t.source == "user") UiColors.link else UiColors.muted,
+                            )
+                            if (t.source == "user") {
+                                TextButton(onClick = {
+                                    File(FieldSchema.userDir(context), t.file).delete()
+                                    FieldSchema.reload(context)
+                                    refresh()
+                                    status = "已删除：${t.name}"
+                                    onChange()
+                                }) { Text("删除", color = UiColors.error) }
+                            }
+                        }
+                        Text("${t.engine.ifBlank { "-" }} · ${t.columns.size} 列", style = MaterialTheme.typography.bodySmall, color = UiColors.link)
+                        if (t.desc.isNotEmpty()) {
+                            Text(t.desc, style = MaterialTheme.typography.bodySmall, color = UiColors.muted, maxLines = 2)
+                        }
+                    }
+                }
+            }
+        }
+
+        Text("字段规则", color = UiColors.text, fontWeight = FontWeight.SemiBold)
+        Text("规则库共 ${FieldSchema.ruleCount()} 条规则", style = MaterialTheme.typography.bodySmall, color = UiColors.muted)
+        val ruleCfgs = userCfgs.filter { it.kind == "rules" }
+        if (ruleCfgs.isEmpty()) {
+            Text("（无用户规则片段）", color = UiColors.muted, style = MaterialTheme.typography.bodySmall)
+        } else {
+            for (c in ruleCfgs) {
+                Card(colors = CardDefaults.cardColors(containerColor = UiColors.surface), modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Text(c.label, color = UiColors.text, modifier = Modifier.weight(1f))
+                        Text("用户", style = MaterialTheme.typography.bodySmall, color = UiColors.link)
+                        TextButton(onClick = {
+                            File(FieldSchema.userDir(context), c.file).delete()
+                            FieldSchema.reload(context)
+                            refresh()
+                            status = "已删除规则片段：${c.file}"
+                            onChange()
+                        }) { Text("删除", color = UiColors.error) }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -446,9 +620,19 @@ private fun ChoiceSetting(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = UiColors.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Box {
-            OutlinedButton(onClick = { open = true }) { Text("$current ▾") }
+        // 标签固定横排、不换行（否则窄屏被下拉挤成竖排）；下拉靠右，太长则省略号。
+        Text(
+            label,
+            color = UiColors.text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            OutlinedButton(onClick = { open = true }) {
+                Text("$current ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 for ((k, v) in options) {
                     DropdownMenuItem(text = { Text(v) }, onClick = { onSelect(k); open = false })

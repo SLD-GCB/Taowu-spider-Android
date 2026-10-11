@@ -1,0 +1,66 @@
+{
+  "id": "专利信息",
+  "name": "专利信息",
+  "desc": "专利公开/详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "专利名称",
+      "type": "TEXT",
+      "rule": "专利_专利名称"
+    },
+    {
+      "name": "申请号",
+      "type": "TEXT",
+      "rule": "专利_申请号"
+    },
+    {
+      "name": "申请人",
+      "type": "TEXT",
+      "rule": "专利_申请人"
+    },
+    {
+      "name": "发明人",
+      "type": "TEXT",
+      "rule": "专利_发明人"
+    },
+    {
+      "name": "分类号",
+      "type": "TEXT",
+      "rule": "专利_分类号"
+    },
+    {
+      "name": "申请日",
+      "type": "TEXT",
+      "rule": "专利_申请日"
+    },
+    {
+      "name": "公开日",
+      "type": "TEXT",
+      "rule": "专利_公开日"
+    },
+    {
+      "name": "摘要",
+      "type": "TEXT",
+      "rule": "专利_摘要"
+    },
+    {
+      "name": "法律状态",
+      "type": "TEXT",
+      "rule": "专利_法律状态"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

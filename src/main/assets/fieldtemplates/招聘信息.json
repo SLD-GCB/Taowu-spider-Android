@@ -1,0 +1,20 @@
+{
+  "id": "招聘信息",
+  "name": "招聘信息",
+  "desc": "招聘/求职详情页。engine=recruit：走招聘专用正则抽取器（移植自 PC 的潜龙纯正则兜底 + 企业名称多策略），不是通用字段引擎。",
+  "engine": "recruit",
+  "columns": [
+    { "name": "企业名称", "type": "TEXT" },
+    { "name": "岗位名称", "type": "TEXT" },
+    { "name": "工作地点", "type": "TEXT" },
+    { "name": "薪资范围", "type": "TEXT" },
+    { "name": "学历要求", "type": "TEXT" },
+    { "name": "工作经验", "type": "TEXT" },
+    { "name": "岗位职责", "type": "TEXT" },
+    { "name": "福利信息", "type": "TEXT" },
+    { "name": "联系方式", "type": "TEXT" },
+    { "name": "job_url", "type": "TEXT" },
+    { "name": "source", "type": "TEXT" }
+  ],
+  "_note": "招聘页大多没有规整的「标签：值」，所以本模板不依赖 synonyms/re，抽取交给 RecruitExtract 的专用正则。"
+}

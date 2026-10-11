@@ -22,6 +22,7 @@ data class TabItem(val route: String, val label: String)
 
 val TABS = listOf(
     TabItem(Routes.CAPTURE, "捕获"),
+    TabItem(Routes.COLLECT, "采集"),
     TabItem(Routes.CONTENT, "内容"),
     TabItem(Routes.SETTINGS, "设置"),
 )

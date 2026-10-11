@@ -1,0 +1,74 @@
+{
+  "_说明": "学术文献 字段规则库（规则名全库唯一，模板业务列只留 name/type/rule，改本文件即改本行业抽取）。synonyms=列名之外还要认的标签词；clean=形态/兜底(title/money/datetime/phone/link/longtext/text)；re=无标签裸值正则（仅当 标签/title 未命中才用）。",
+  "学术_标题": {
+    "clean": "title",
+    "synonyms": [
+      "题名",
+      "篇名",
+      "论文题目"
+    ]
+  },
+  "学术_作者": {
+    "clean": "text",
+    "synonyms": [
+      "著者",
+      "第一作者",
+      "通讯作者"
+    ]
+  },
+  "学术_期刊": {
+    "clean": "text",
+    "synonyms": [
+      "刊名",
+      "来源期刊"
+    ]
+  },
+  "学术_年份": {
+    "clean": "datetime",
+    "synonyms": [
+      "出版年",
+      "年"
+    ],
+    "re": [
+      "(19[89]\\d{2}|20[0-2]\\d)"
+    ]
+  },
+  "学术_期卷": {
+    "clean": "text",
+    "synonyms": [
+      "卷期",
+      "年期卷"
+    ]
+  },
+  "学术_关键词": {
+    "clean": "text",
+    "synonyms": [
+      "主题词",
+      "关键字"
+    ]
+  },
+  "学术_摘要": {
+    "clean": "text",
+    "synonyms": [
+      "内容提要",
+      "文摘"
+    ]
+  },
+  "学术_DOI": {
+    "clean": "text",
+    "synonyms": [
+      "doi",
+      "Doi"
+    ],
+    "re": [
+      "(10\\.\\d{4,9}/[^\\s，。；;]+)"
+    ]
+  },
+  "学术_引用格式": {
+    "clean": "text",
+    "synonyms": [
+      "引用",
+      "参考文献格式"
+    ]
+  }
+}

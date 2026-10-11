@@ -1,0 +1,66 @@
+{
+  "id": "招标采购",
+  "name": "招标采购",
+  "desc": "招标/政府采购公告详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "项目名称",
+      "type": "TEXT",
+      "rule": "招标_项目名称"
+    },
+    {
+      "name": "项目编号",
+      "type": "TEXT",
+      "rule": "招标_项目编号"
+    },
+    {
+      "name": "采购人",
+      "type": "TEXT",
+      "rule": "招标_采购人"
+    },
+    {
+      "name": "代理机构",
+      "type": "TEXT",
+      "rule": "招标_代理机构"
+    },
+    {
+      "name": "预算金额",
+      "type": "TEXT",
+      "rule": "招标_预算金额"
+    },
+    {
+      "name": "开标时间",
+      "type": "TEXT",
+      "rule": "招标_开标时间"
+    },
+    {
+      "name": "投标截止",
+      "type": "TEXT",
+      "rule": "招标_投标截止"
+    },
+    {
+      "name": "开标地点",
+      "type": "TEXT",
+      "rule": "招标_开标地点"
+    },
+    {
+      "name": "联系电话",
+      "type": "TEXT",
+      "rule": "招标_联系电话"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

@@ -21,6 +21,9 @@ object UiColors {
     val onAccent = Color(0xFF173238)    // 金底上的深青字
     val link = accent                   // 链接/高亮沿用主色
     val error = Color(0xFFE9A79C)       // 柔珊瑚
+    // 内置浏览器底色：搜索框下方（网页内容区）= 中青（比浅青深、比深青浅）；
+    //                 搜索框上方（页面背景）用 bg = 深青。
+    val browserBg = Color(0xFF4E7C86)
 }
 
 /** 让 Material 组件（按钮/开关/输入框/对话框/选项卡…）也跟着走这套色。 */

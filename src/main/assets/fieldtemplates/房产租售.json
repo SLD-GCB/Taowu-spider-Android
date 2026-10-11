@@ -1,0 +1,66 @@
+{
+  "id": "房产租售",
+  "name": "房产租售",
+  "desc": "二手房/租房/楼盘详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "标题",
+      "type": "TEXT",
+      "rule": "房产_标题"
+    },
+    {
+      "name": "小区",
+      "type": "TEXT",
+      "rule": "房产_小区"
+    },
+    {
+      "name": "户型",
+      "type": "TEXT",
+      "rule": "房产_户型"
+    },
+    {
+      "name": "面积",
+      "type": "TEXT",
+      "rule": "房产_面积"
+    },
+    {
+      "name": "朝向",
+      "type": "TEXT",
+      "rule": "房产_朝向"
+    },
+    {
+      "name": "楼层",
+      "type": "TEXT",
+      "rule": "房产_楼层"
+    },
+    {
+      "name": "总价",
+      "type": "TEXT",
+      "rule": "房产_总价"
+    },
+    {
+      "name": "单价",
+      "type": "TEXT",
+      "rule": "房产_单价"
+    },
+    {
+      "name": "区域",
+      "type": "TEXT",
+      "rule": "房产_区域"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}

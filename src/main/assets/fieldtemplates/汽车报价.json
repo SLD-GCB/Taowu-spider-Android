@@ -1,0 +1,66 @@
+{
+  "id": "汽车报价",
+  "name": "汽车报价",
+  "desc": "汽车车型/报价详情页",
+  "engine": "schema_v2",
+  "columns": [
+    {
+      "name": "车型",
+      "type": "TEXT",
+      "rule": "汽车_车型"
+    },
+    {
+      "name": "品牌",
+      "type": "TEXT",
+      "rule": "汽车_品牌"
+    },
+    {
+      "name": "厂商",
+      "type": "TEXT",
+      "rule": "汽车_厂商"
+    },
+    {
+      "name": "指导价",
+      "type": "TEXT",
+      "rule": "汽车_指导价"
+    },
+    {
+      "name": "经销商价",
+      "type": "TEXT",
+      "rule": "汽车_经销商价"
+    },
+    {
+      "name": "上市时间",
+      "type": "TEXT",
+      "rule": "汽车_上市时间"
+    },
+    {
+      "name": "排量",
+      "type": "TEXT",
+      "rule": "汽车_排量"
+    },
+    {
+      "name": "变速箱",
+      "type": "TEXT",
+      "rule": "汽车_变速箱"
+    },
+    {
+      "name": "车身类型",
+      "type": "TEXT",
+      "rule": "汽车_车身类型"
+    },
+    {
+      "name": "job_url",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "link"
+    },
+    {
+      "name": "source",
+      "type": "TEXT",
+      "synonyms": [],
+      "clean": "text"
+    }
+  ],
+  "_note": "表内共12列：id自动主键 + 9业务列 + job_url + source（对齐现招聘表）"
+}
