@@ -1,5 +1,9 @@
 # 梼杌 (taowu-android)
 
+<p align="center">
+  <img src="docs/hero.jpg" width="360" alt="梼杌安卓 · 网页探测">
+</p>
+
 > 一个安卓上的**网页视频/动漫抓取 & 下载**工具。内置浏览器走到要抓的页面，点一下按钮，
 > 自动解析出 m3u8 / mp4 / DASH 流并下载成能播的本地文件。
 >
