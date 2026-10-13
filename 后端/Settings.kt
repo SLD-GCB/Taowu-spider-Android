@@ -113,6 +113,11 @@ object AppSettings {
         get() = bool("browser_fit", false)
         set(v) = putBool("browser_fit", v)
 
+    /** 网页探测：内置浏览器旁观页面请求，识别其中的媒体流（m3u8/mp4/mp3…）。 */
+    var webProbeEnabled: Boolean
+        get() = bool("web_probe", true)
+        set(v) = putBool("web_probe", v)
+
     // ── 下载 ────────────────────────────────────────────────────
     /** HLS/DASH 分片并发窗口。 */
     var downloadConcurrency: Int

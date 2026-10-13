@@ -1,11 +1,16 @@
 package com.taowu.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
+import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -42,6 +47,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,17 +70,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.taowu.GrabTasks
 import com.taowu.backend.AdFilter
+import com.taowu.backend.BackendContainer
 import com.taowu.backend.ResolveMode
 import com.taowu.backend.UrlHistory
+import com.taowu.backend.download.Naming
 import com.taowu.backend.field.CollectRow
 import com.taowu.backend.field.CollectStore
 import com.taowu.backend.field.FieldCtx
 import com.taowu.backend.field.FieldSchema
 import com.taowu.backend.field.RecruitExtract
 import com.taowu.backend.field.SchemaExtract
+import com.taowu.backend.model.Track
 import com.taowu.backend.settings.AppSettings
+import com.taowu.backend.sniff.MediaSniffer
 import com.taowu.ui.theme.UiColors
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,6 +140,99 @@ private const val EXTRACT_PAGE_JS = """
 """
 
 /**
+ * 网页探测的注入脚本：抓「JS 渲染后才出现」的地址（静态 HTML 与拦截请求都拿不到的）。
+ *
+ * 做四件事，全部经 `window.__taowu.offer(url)` 回传（由 [SniffBridge] 收口到 [MediaSniffer]）：
+ *  ① hook `fetch` / `XMLHttpRequest.open` —— JS 现算/异步发的流地址；
+ *  ② `performance` 资源条目 —— 页面实际加载过的一切；
+ *  ③ DOM 扫描（video/source/a/iframe 及 data-* 属性）—— 渲染进 DOM 的地址（哪怕还没请求）；
+ *  ④ 内联 &lt;script&gt; 文本里的绝对媒体地址 —— 藏在 JS 字面量里、点播前不会发出的地址。
+ *
+ * 用 `evaluateJavascript` 注入（不受页面 CSP 限制）；`__taowuInstalled` 防重复安装；
+ * MutationObserver 节流后再扫，覆盖 SPA 动态插入。绝不抛异常、绝不影响页面。
+ */
+private const val SNIFF_JS = """
+(function(){
+  if (window.__taowuInstalled) { try { window.__taowuSweep && window.__taowuSweep(true); } catch(e){} return; }
+  window.__taowuInstalled = true;
+  var EXTS = ['m3u8','mpd','mp4','webm','flv','mov','m4v','mkv','ts','m4s','mp3','m4a','aac','flac','wav','ogg','opus','oga'];
+  function isMedia(u){
+    if (!u || typeof u !== 'string' || u.length < 6) return false;
+    var s = u.split('#')[0].split('?')[0].toLowerCase();
+    var i = s.lastIndexOf('.');
+    if (i < 0) return false;
+    var e = s.substring(i + 1);
+    for (var k = 0; k < EXTS.length; k++) { if (e === EXTS[k]) return true; }
+    return false;
+  }
+  function send(u){
+    try { if (isMedia(u)) window.__taowu.offer(u); } catch(e){}
+  }
+  try {
+    var of = window.fetch;
+    if (of) window.fetch = function(input){
+      try { send(typeof input === 'string' ? input : (input && input.url)); } catch(e){}
+      return of.apply(this, arguments);
+    };
+  } catch(e){}
+  try {
+    var oo = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(m, u){
+      try { send(u); } catch(e){}
+      return oo.apply(this, arguments);
+    };
+  } catch(e){}
+  function sweepResources(){
+    try {
+      var es = performance.getEntriesByType ? performance.getEntriesByType('resource') : [];
+      for (var i = 0; i < es.length; i++) send(es[i].name);
+    } catch(e){}
+  }
+  function sweepDom(){
+    try {
+      var attrs = ['src','href','data-src','data-url','data-video','data-file','data-play','data-mp4','data-m3u8','data-source','data-original'];
+      var sel = 'video,source,audio,embed,object,a,iframe,[data-src],[data-url],[data-video],[data-file],[data-play],[data-mp4],[data-m3u8]';
+      var els = document.querySelectorAll(sel);
+      for (var j = 0; j < els.length; j++) {
+        for (var k = 0; k < attrs.length; k++) {
+          var v = els[j].getAttribute && els[j].getAttribute(attrs[k]);
+          if (v) send(v);
+        }
+      }
+    } catch(e){}
+  }
+  function sweepScripts(){
+    try {
+      var ss = document.querySelectorAll('script');
+      var re = /https?:\/\/[^"'\s\\)]+/gi;
+      for (var s = 0; s < ss.length; s++) {
+        var t = ss[s].textContent;
+        if (!t || t.length < 16 || t.length > 400000) continue;
+        var m, n = 0;
+        while ((m = re.exec(t)) !== null && n < 40) { send(m[0]); n++; }
+      }
+    } catch(e){}
+  }
+  window.__taowuSweep = function(deep){
+    sweepResources();
+    sweepDom();
+    if (deep) sweepScripts();
+  };
+  try { window.__taowuSweep(true); } catch(e){}
+  try {
+    var pending = null;
+    new MutationObserver(function(){
+      if (pending) return;
+      pending = setTimeout(function(){ pending = null; try { window.__taowuSweep(false); } catch(e){} }, 800);
+    }).observe(document.documentElement || document, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ['src','href','data-src','data-url','data-video','data-play']
+    });
+  } catch(e){}
+})();
+"""
+
+/**
  * 捕获：内置浏览器。
  *
  * 注意：这个 WebView 在**空状态**下会铺满整屏（截图 1.jpg 已证实），把同级的顶部栏全盖住。
@@ -136,7 +241,9 @@ private const val EXTRACT_PAGE_JS = """
  */
 @Composable
 fun CaptureScreen(
+    container: BackendContainer,
     onSubmit: (url: String, mode: ResolveMode, action: CapAction) -> Unit,
+    onPlay: (Track, PlayContext?) -> Unit,
 ) {
     var mode by rememberSaveable { mutableStateOf(ResolveMode.GENERAL) }
     var modeExpanded by rememberSaveable { mutableStateOf(false) }
@@ -148,6 +255,13 @@ fun CaptureScreen(
     var bottomExpanded by rememberSaveable { mutableStateOf(true) }   // 底部抓取面板是否展开
     var progress by rememberSaveable { mutableIntStateOf(100) }   // 0..100
     val webView = remember { mutableStateOf<WebView?>(null) }
+
+    // 网页探测：拦截线程只读 pageRef（原子引用），UI 线程写；结果在 MediaSniffer.found
+    val pageRef = remember { AtomicReference("") }
+    val sniffed by MediaSniffer.found.collectAsState()
+    val gs by GrabTasks.state.collectAsState()
+    var showSniff by rememberSaveable { mutableStateOf(false) }
+    var sniffMsg by remember { mutableStateOf("") }
 
     // 浏览记录（存 filesDir，最近的在前，上限 60）
     val context = LocalContext.current
@@ -232,6 +346,11 @@ fun CaptureScreen(
         }
     }
 
+    /** 往当前页注入网页探测脚本（幂等：重复调用只触发一次补扫）。 */
+    fun installSniff() {
+        runCatching { webView.value?.evaluateJavascript(SNIFF_JS, null) }
+    }
+
     fun normalize(u: String): String {
         val t = u.trim()
         if (t.isEmpty()) return ""
@@ -254,6 +373,8 @@ fun CaptureScreen(
         canGoForward = false
         pageError = ""
         progress = 100
+        pageRef.set("")
+        MediaSniffer.clear()          // 回主页 = 新会话，清掉上一轮探测结果
         focusManager.clearFocus()
         webView.value?.loadUrl("about:blank")
     }
@@ -263,6 +384,49 @@ fun CaptureScreen(
     fun grab(action: CapAction) {
         val u = currentUrl.trim()
         if (u.startsWith("http")) onSubmit(u, mode, action)
+    }
+
+    // ── 网页探测：把浏览器里捕获到的媒体交给播放/下载 ──────────────
+    /** 从 WebView 的 CookieManager 取该 URL 的 Cookie，供试播/下载带上页面会话。 */
+    fun cookieMap(url: String): Map<String, String> =
+        (CookieManager.getInstance().getCookie(url) ?: "")
+            .split(';')
+            .mapNotNull {
+                val i = it.indexOf('=')
+                if (i <= 0) null else it.substring(0, i).trim() to it.substring(i + 1).trim()
+            }
+            .filter { it.first.isNotEmpty() }
+            .toMap()
+
+    fun playSniff(item: MediaSniffer.Found) {
+        onPlay(MediaSniffer.toTrack(1, item, cookieMap(item.url)), null)
+    }
+
+    fun downloadSniff(item: MediaSniffer.Found) {
+        val track = MediaSniffer.toTrack(1, item, cookieMap(item.url))
+        val ok = GrabTasks.start(context, "sniff:${item.key}", track.titleHint.ifEmpty { "网页探测下载" }) { report, _ ->
+            val dest = Naming.destPathFor(
+                container.downloadDir, track.titleHint, track.url, MediaSniffer.downloadExt(item), track.index,
+            )
+            val res = container.downloader.download(track, dest, referer = track.pageUrl, onProgress = { d, t ->
+                report(d, t, "下载中 $d / $t")
+            })
+            when (res.status) {
+                "ok" -> "已下载：${res.path}（${res.bytes / 1024}KB）"
+                "skipped" -> "已跳过：${res.error}"
+                "unsupported" -> "不支持：${res.error}"
+                else -> "下载失败：${res.error}"
+            }
+        }
+        sniffMsg = if (ok) "已开始下载：${track.titleHint}" else "已有抓取任务在运行"
+    }
+
+    fun copySniff(item: MediaSniffer.Found) {
+        runCatching {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("media", item.url))
+        }
+        sniffMsg = "已复制链接"
     }
 
     // 系统返回键：先在网页内后退，不直接退出
@@ -298,15 +462,20 @@ fun CaptureScreen(
                     // 关键：换掉 WebView 默认 UA（含 "; wv" / "Version/4.0"），否则百度/B站等会拦
                     settings.userAgentString = MOBILE_UA
                     android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    // 网页探测：把 JS 侧捕获到的媒体地址回传（注入 SNIFF_JS 时用 window.__taowu.offer）
+                    addJavascriptInterface(SniffBridge(pageRef), "__taowu")
 
                     webViewClient = object : WebViewClient() {
                         // 广告过滤：命中广告域/广告路径的请求直接返回空，不发出去（页面更干净）
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                            val urlStr = request.url?.toString() ?: return null
                             if (AppSettings.adFilterEnabled &&
-                                AdFilter.isAd(request.url.toString(), AdFilter.parseExtra(AppSettings.adFilterExtra))
+                                AdFilter.isAd(urlStr, AdFilter.parseExtra(AppSettings.adFilterExtra))
                             ) {
                                 return WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(ByteArray(0)))
                             }
+                            // 网页探测：旁观网页请求，识别其中的媒体流（绝不抛异常，绝不影响 WebView）
+                            runCatching { MediaSniffer.offer(urlStr, pageRef.get(), request.requestHeaders ?: emptyMap()) }
                             return null
                         }
 
@@ -321,17 +490,20 @@ fun CaptureScreen(
                             url?.let {
                                 if (it.startsWith("http")) {
                                     currentUrl = it
+                                    pageRef.set(it)                  // 供拦截线程读当前页 URL
                                     if (!addrFocused) address = it   // 地址栏跟着页面走
                                 }
                             }
                             pageError = ""
                             progress = 5
+                            installSniff()   // 尽早装钩子：捕获 JS 现算/异步发的媒体地址
                         }
 
                         override fun doUpdateVisitedHistory(v: WebView, url: String?, isReload: Boolean) {
                             url?.let {
                                 if (it.startsWith("http")) {
                                     currentUrl = it
+                                    pageRef.set(it)
                                     if (!addrFocused) address = it
                                 }
                             }
@@ -344,6 +516,7 @@ fun CaptureScreen(
                             url?.let {
                                 if (it.startsWith("http")) {
                                     currentUrl = it
+                                    pageRef.set(it)
                                     if (!addrFocused) address = it
                                 }
                                 // 记一条浏览记录（只记 http(s) 主文档）
@@ -351,6 +524,7 @@ fun CaptureScreen(
                             }
                             canGoBack = v.canGoBack()
                             canGoForward = v.canGoForward()
+                            installSniff()   // 加载完再补扫一次（资源/DOM/内联脚本）
                             // 适配屏幕开着但还没对当前页应用（如 WebView 重建过）→ 应用一次
                             if (fitMode && !fitApplied) { fitApplied = true; applyFit() }
                         }
@@ -540,6 +714,14 @@ fun CaptureScreen(
                             modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
                         )
                     }
+                    if (sniffMsg.isNotEmpty()) {
+                        Text(
+                            sniffMsg,
+                            color = UiColors.link,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
+                        )
+                    }
                     // 底部一行：浏览记录（左） + 收起抓手（右）
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -555,6 +737,13 @@ fun CaptureScreen(
                             Text(
                                 if (fitMode) "手机版 ✓" else "手机版",
                                 color = if (fitMode) UiColors.accent else UiColors.link,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        TextButton(onClick = { installSniff(); showSniff = true }) {
+                            Text(
+                                if (sniffed.isEmpty()) "探测" else "探测 ${sniffed.size}",
+                                color = UiColors.link,
                                 fontSize = 13.sp,
                             )
                         }
@@ -645,6 +834,19 @@ fun CaptureScreen(
                 },
             )
         }
+
+        // 网页探测结果弹窗：试播 / 下载 / 复制 / 清空
+        if (showSniff) {
+            SniffDialog(
+                items = sniffed,
+                downloading = gs.active,
+                onPlay = { playSniff(it) },
+                onDownload = { downloadSniff(it) },
+                onCopy = { copySniff(it) },
+                onClear = { MediaSniffer.clear() },
+                onDismiss = { showSniff = false },
+            )
+        }
     }
 }
 
@@ -653,6 +855,88 @@ private fun hostOf(url: String): String = try {
     java.net.URI(url).host ?: url
 } catch (e: Exception) {
     url
+}
+
+/** 网页探测结果弹窗：每条形如「主机 · 类型 / 扩展名」+ 地址，操作 试播 / 下载 / 复制。 */
+@Composable
+private fun SniffDialog(
+    items: List<MediaSniffer.Found>,
+    downloading: Boolean,
+    onPlay: (MediaSniffer.Found) -> Unit,
+    onDownload: (MediaSniffer.Found) -> Unit,
+    onCopy: (MediaSniffer.Found) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (items.isEmpty()) "网页探测" else "网页探测（${items.size}）") },
+        text = {
+            if (items.isEmpty()) {
+                Text(
+                    "还没探测到媒体。在网页里点一下播放、或让页面多加载一会儿，再回来看看。",
+                    color = UiColors.muted,
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    for (m in items) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Text(
+                                "${hostOf(m.url)}　·　${m.mediaClass.ifEmpty { "清单" }} ${m.kind}" +
+                                    if (m.ext.isNotEmpty()) "/${m.ext}" else "",
+                                color = UiColors.text,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                m.url,
+                                color = UiColors.link,
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(onClick = { onPlay(m) }) { Text("试播", fontSize = 13.sp) }
+                                TextButton(onClick = { onDownload(m) }, enabled = !downloading) {
+                                    Text(if (downloading) "下载中" else "下载", fontSize = 13.sp)
+                                }
+                                TextButton(onClick = { onCopy(m) }) { Text("复制", fontSize = 13.sp) }
+                            }
+                        }
+                        HorizontalDivider(color = UiColors.outline)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (items.isNotEmpty()) {
+                TextButton(onClick = onClear) { Text("清空", color = UiColors.error) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+/**
+ * 网页探测的 JS 桥：注入脚本用 `window.__taowu.offer(url)` 把 JS 侧发现的媒体地址回传。
+ * `@JavascriptInterface` 方法在 WebView 的 JS 线程调用（非 UI 线程）——[MediaSniffer.offer] 与
+ * [pageRef] 都线程安全。这里只「记录 URL」，不暴露任何危险能力。
+ */
+private class SniffBridge(private val pageRef: AtomicReference<String>) {
+    @JavascriptInterface
+    fun offer(url: String?) {
+        if (url.isNullOrEmpty()) return
+        MediaSniffer.offer(url, pageRef.get(), emptyMap())
+    }
 }
 
 /** 地址栏里的紧凑导航按钮（主页/后退/前进）。 */

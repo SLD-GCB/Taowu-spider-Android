@@ -1,6 +1,12 @@
 package com.taowu.ui
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -80,6 +87,65 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
     var pendingDelete by remember { mutableStateOf<File?>(null) }
     var pendingDelSrc by remember { mutableStateOf<SavedSources.Item?>(null) }
     var status by remember { mutableStateOf("") }
+    var pendingExportFile by remember { mutableStateOf<File?>(null) }
+    var pendingExportGroup by remember { mutableStateOf<ContentGroup?>(null) }
+
+    // 导出·单文件：系统「另存为」（按扩展名给对 mime，保留原文件名）
+    val exportFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { res ->
+        val src = pendingExportFile ?: return@rememberLauncherForActivityResult
+        pendingExportFile = null
+        val uri = res.data?.data
+        if (res.resultCode != Activity.RESULT_OK || uri == null) {
+            status = "已取消导出"
+            return@rememberLauncherForActivityResult
+        }
+        status = "导出中…"
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        src.inputStream().use { it.copyTo(out) }
+                    } ?: error("无法写入")
+                }.isSuccess
+            }
+            status = if (ok) "已导出：${src.name}（${fmtSize(src.length())}）" else "导出失败：${src.name}"
+        }
+    }
+
+    // 导出·整部：选一个目录，把全部集复制进去
+    val exportDirLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        val g = pendingExportGroup ?: return@rememberLauncherForActivityResult
+        pendingExportGroup = null
+        if (uri == null) {
+            status = "已取消导出"
+            return@rememberLauncherForActivityResult
+        }
+        status = "导出中…"
+        scope.launch {
+            val (okCount, failCount) = withContext(Dispatchers.IO) { copyGroupToTree(context, uri, g) }
+            status = "已导出 $okCount 集" + if (failCount > 0) "（失败 $failCount）" else ""
+        }
+    }
+
+    fun exportFile(f: File) {
+        pendingExportFile = f
+        exportFileLauncher.launch(
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = mimeOfName(f.name)
+                putExtra(Intent.EXTRA_TITLE, f.name)
+            },
+        )
+    }
+
+    fun exportGroup(g: ContentGroup) {
+        pendingExportGroup = g
+        exportDirLauncher.launch(null)
+    }
 
     val dir = container.downloadDir
     val (groups, loose) = remember(refresh) { scanContent(dir) }
@@ -185,15 +251,11 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "正在下载：${gt.title}",
-                                    color = UiColors.text,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(onClick = { GrabTasks.stop() }) { Text("停止", color = UiColors.error) }
-                            }
+                            Text(
+                                "正在下载：${gt.title}",
+                                color = UiColors.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                             Text(
                                 "已完成 ${gt.done}/${gt.total}" + if (gt.text.isNotEmpty()) "　·　${gt.text}" else "",
                                 style = MaterialTheme.typography.bodySmall,
@@ -207,6 +269,14 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                                     color = UiColors.muted,
                                     maxLines = 1,
                                 )
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(onClick = { GrabTasks.stop() }, modifier = Modifier.weight(1f)) {
+                                    Text("停止", color = UiColors.error)
+                                }
                             }
                         }
                     }
@@ -245,11 +315,6 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                                                 color = UiColors.muted,
                                             )
                                         }
-                                        TextButton(onClick = {
-                                            val first = g.files.firstOrNull() ?: return@TextButton
-                                            onPlay(localTrack(first), PlayContext.ofLocal(g.name, g.files, 0))
-                                        }) { Text("观看") }
-                                        TextButton(onClick = { pendingDelete = g.dir }) { Text("删除", color = UiColors.error) }
                                     }
                                     if (open) {
                                         for (f in g.files) {
@@ -264,24 +329,63 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                                             )
                                         }
                                     }
+                                    // 文字在上、按钮在下（对齐大司农传输页卡片）
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        OutlinedButton(onClick = {
+                                            val first = g.files.firstOrNull() ?: return@OutlinedButton
+                                            onPlay(localTrack(first), PlayContext.ofLocal(g.name, g.files, 0))
+                                        }, modifier = Modifier.weight(1f)) { Text("观看") }
+                                        OutlinedButton(
+                                            onClick = { exportGroup(g) },
+                                            modifier = Modifier.weight(1f),
+                                        ) { Text("导出") }
+                                        OutlinedButton(
+                                            onClick = { pendingDelete = g.dir },
+                                            modifier = Modifier.weight(1f),
+                                        ) { Text("删除", color = UiColors.error) }
+                                    }
                                 }
                             }
                         }
                         items(loose, key = { it.absolutePath }) { f ->
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = UiColors.surface),
-                                modifier = Modifier.fillMaxWidth().clickable { onPlay(localTrack(f), null) },
+                                modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Cover(findCover(f.parentFile, f.nameWithoutExtension), Modifier.width(52.dp).height(72.dp))
-                                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                        Text(f.name, color = UiColors.text, fontWeight = FontWeight.SemiBold)
-                                        Text(fmtSize(f.length()), style = MaterialTheme.typography.bodySmall, color = UiColors.muted)
+                                Column(Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onPlay(localTrack(f), null) }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Cover(findCover(f.parentFile, f.nameWithoutExtension), Modifier.width(52.dp).height(72.dp))
+                                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                            Text(f.name, color = UiColors.text, fontWeight = FontWeight.SemiBold)
+                                            Text(fmtSize(f.length()), style = MaterialTheme.typography.bodySmall, color = UiColors.muted)
+                                        }
                                     }
-                                    TextButton(onClick = { pendingDelete = f }) { Text("删除", color = UiColors.error) }
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { exportFile(f) },
+                                            modifier = Modifier.weight(1f),
+                                        ) { Text("导出") }
+                                        OutlinedButton(
+                                            onClick = { pendingDelete = f },
+                                            modifier = Modifier.weight(1f),
+                                        ) { Text("删除", color = UiColors.error) }
+                                    }
                                 }
                             }
                         }
@@ -326,12 +430,6 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                                                 color = UiColors.muted,
                                             )
                                         }
-                                        TextButton(onClick = {
-                                            // 有分集优先按分集播（在线解析该集）；否则播存档直链
-                                            if (item.episodes.isNotEmpty()) playSavedEpisode(item, 0)
-                                            else item.tracks.firstOrNull()?.let { playSavedTrack(item, it) }
-                                        }) { Text("观看") }
-                                        TextButton(onClick = { pendingDelSrc = item }) { Text("删除", color = UiColors.error) }
                                     }
                                     if (open) {
                                         if (item.episodes.isNotEmpty()) {
@@ -354,6 +452,23 @@ fun ContentScreen(container: BackendContainer, onPlay: (Track, PlayContext?) -> 
                                                 )
                                             }
                                         }
+                                    }
+                                    // 文字在上、按钮在下（对齐大司农传输页卡片）
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        OutlinedButton(onClick = {
+                                            // 有分集优先按分集播（在线解析该集）；否则播存档直链
+                                            if (item.episodes.isNotEmpty()) playSavedEpisode(item, 0)
+                                            else item.tracks.firstOrNull()?.let { playSavedTrack(item, it) }
+                                        }, modifier = Modifier.weight(1f)) { Text("观看") }
+                                        OutlinedButton(
+                                            onClick = { pendingDelSrc = item },
+                                            modifier = Modifier.weight(1f),
+                                        ) { Text("删除", color = UiColors.error) }
                                     }
                                 }
                             }
@@ -563,3 +678,43 @@ private fun localTrack(f: File): Track = Track(
     pageUrl = "",
     titleHint = f.name,
 )
+
+/** 按扩展名给 SAF 用的 mime（决定「另存为」对话框里的类型）。 */
+private fun mimeOfName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    "mp4", "m4v" -> "video/mp4"
+    "webm" -> "video/webm"
+    "mkv" -> "video/x-matroska"
+    "mov" -> "video/quicktime"
+    "flv" -> "video/x-flv"
+    "ts" -> "video/mp2t"
+    "m4a" -> "audio/mp4"
+    "mp3" -> "audio/mpeg"
+    "aac" -> "audio/aac"
+    else -> "application/octet-stream"
+}
+
+/**
+ * 把「一部」的全部集复制进用户选的 SAF 目录（保留原文件名）。
+ * 返回 (成功数, 失败数)；绝不抛异常。
+ */
+private fun copyGroupToTree(context: android.content.Context, treeUri: Uri, g: ContentGroup): Pair<Int, Int> {
+    val resolver = context.contentResolver
+    val docId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+        ?: return 0 to g.files.size
+    val rootDoc = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+    var ok = 0
+    var fail = 0
+    for (f in g.files) {
+        try {
+            val target = DocumentsContract.createDocument(resolver, rootDoc, mimeOfName(f.name), f.name)
+            if (target == null) { fail++; continue }
+            val out = resolver.openOutputStream(target)
+            if (out == null) { fail++; continue }
+            out.use { o -> f.inputStream().use { it.copyTo(o) } }
+            ok++
+        } catch (e: Exception) {
+            fail++
+        }
+    }
+    return ok to fail
+}

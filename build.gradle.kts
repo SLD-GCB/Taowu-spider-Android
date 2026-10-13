@@ -19,8 +19,8 @@ android {
         applicationId = "com.taowu"
         minSdk = 26
         targetSdk = 37
-        versionCode = 35
-        versionName = "5.3"
+        versionCode = 38
+        versionName = "5.6"
 
         // FFmpeg 软解（NextLib）每个 ABI 数 MB —— 只保留真机常见的两种，
         // 砍掉只用于模拟器的 x86/x86_64，控制 APK 体积。

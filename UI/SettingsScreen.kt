@@ -304,6 +304,20 @@ private fun ParseTab(onChange: () -> Unit, scroll: ScrollState) {
             )
         }
 
+        // 网页探测
+        ParamCard {
+            Text("网页探测", color = UiColors.text, fontWeight = FontWeight.SemiBold)
+            BoolSetting("开启网页实时探测（把浏览器请求里的媒体流列出来）", AppSettings.webProbeEnabled) {
+                AppSettings.webProbeEnabled = it; onChange()
+            }
+            Text(
+                "边浏览边捕获网页发出的媒体请求（含 JS 动态加载的 m3u8/mp4/mp3 等），" +
+                    "捕获页会显示「探测 N」，点开可试播 / 下载 / 复制。分片(.ts/.m4s)不入列；广告按上方规则过滤。",
+                style = MaterialTheme.typography.bodySmall,
+                color = UiColors.muted,
+            )
+        }
+
         ResetButton(onChange)
     }
 }

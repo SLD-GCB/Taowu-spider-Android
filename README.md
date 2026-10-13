@@ -7,7 +7,7 @@
 > 配方系统整套搬到了 Android（Kotlin + Jetpack Compose + Media3）。
 
 - 包名：`com.taowu`
-- 当前版本：`3.4`（versionCode 16）
+- 当前版本：`5.6`（versionCode 38）
 - 最低系统：Android 8.0（API 26）；目标 SDK 37
 
 ---
@@ -602,6 +602,7 @@ taowu-android/
 │   ├── BackendContainer.kt  # 装配引擎/注册表/解析器/下载器，载入配方
 │   ├── MediaResolver.kt     # 解析编排（通用 / 配方）
 │   ├── StaticExtract.kt     # 页内八趟静态扫描 + 混淆解码
+│   ├── MediaSniffer.kt      # 网页探测：旁观浏览器请求 + JS 注入，识别媒体流
 │   ├── EpisodePlan.kt       # 分集/整部识别（MacCMS、额外正则）
 │   ├── Grabber.kt           # 抓取编排层（单集/分集/整部，主力）
 │   ├── Download.kt          # 下载栈（HLS/DASH/直链，Range，续传）

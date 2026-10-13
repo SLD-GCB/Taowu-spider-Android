@@ -74,6 +74,7 @@ fun AppEntry(container: BackendContainer) {
         ) {
             composable(Routes.CAPTURE) {
                 CaptureScreen(
+                    container = container,
                     onSubmit = { url, mode, action ->
                         pendingUrl = url
                         pendingMode = mode
@@ -85,6 +86,7 @@ fun AppEntry(container: BackendContainer) {
                             }
                         )
                     },
+                    onPlay = { track, ctx -> goPlay(track, ctx) },
                 )
             }
             composable(Routes.COLLECT) {
