@@ -30,9 +30,24 @@ jobs:
 
       - name: Install fdroidserver
         run: |
+          set -euo pipefail
+          # 不用 Ubuntu 自带的 fdroidserver 2.2.1:它的 androguard 3.x 解析不了
+          # 新版 aapt2 产出的 resources.arsc,会报 "res1 must be zero!"。
+          # 改为装最新的 fdroidserver(>=2.4,配 androguard 4.x)。
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fdroidserver
+          sudo apt-get install -y --no-install-recommends \
+            python3-venv \
+            default-jdk-headless \
+            apksigner \
+            aapt \
+            openssl \
+            rsync
+          python3 -m venv /opt/fd
+          /opt/fd/bin/pip install --quiet --upgrade pip setuptools wheel
+          /opt/fd/bin/pip install --quiet fdroidserver
+          sudo ln -sf /opt/fd/bin/fdroid /usr/local/bin/fdroid
           fdroid --version
+          /opt/fd/bin/pip show androguard | head -2
 
       - name: Resolve release tag
         id: rel
@@ -81,6 +96,7 @@ jobs:
           # 口令只在本次运行的临时 checkout 里追加,不会被提交
           printf '\nkeystorepass: "%s"\nkeypass: "%s"\n' \
             "$FDROID_KEYSTORE_PASS" "$FDROID_KEYSTORE_PASS" >> config.yml
+          chmod 600 config.yml
           fdroid update
           rm -f keystore.jks
 
