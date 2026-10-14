@@ -1,0 +1,18 @@
+# 梼杌 · 自建 F-Droid 仓库配置
+# 参考:https://f-droid.org/docs/Setup_an_F-Droid_App_Repo/
+#
+# 本文件可以安全提交 —— 里面不含任何口令。
+# keystorepass / keypass 由 CI 在运行时从 GitHub Secrets 追加进来。
+
+repo_url: https://sld-gcb.github.io/Taowu-spider-Android/fdroid/repo
+repo_name: 梼杌 Taowu
+repo_icon: repo-icon.png
+repo_description: |
+  梼杌 · 网页视频抓取与下载(安卓端)的自建 F-Droid 仓库。
+  内置浏览器走到要抓的页面,一键解析 m3u8 / mp4 / DASH 流并下载成可离线播放的本地文件。
+  源码:https://github.com/SLD-GCB/Taowu-spider-Android
+
+# ── 索引签名密钥(口令不在此处,由 CI 注入)──────────────────
+keystore: keystore.jks
+repo_keyalias: fdroidrepo
+keydname: CN=Taowu F-Droid Repo, OU=SLD-GCB, O=SLD-GCB, C=CN

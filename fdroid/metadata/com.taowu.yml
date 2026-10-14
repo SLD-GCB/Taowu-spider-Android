@@ -1,0 +1,38 @@
+# 梼杌 · app 元数据
+# 这是「二进制仓库」——APK 由本仓库自己的 Release 提供,不在这里构建,
+# 所以不写 Builds: 段。字段参考:https://f-droid.org/docs/Build_Metadata_Reference/
+
+Name: 梼杌
+Categories:
+  - Internet
+  - Multimedia
+License: AGPL-3.0-only
+AuthorName: SLD-GCB
+AuthorEmail: hdhdkc54748448@gmail.com
+SourceCode: https://github.com/SLD-GCB/Taowu-spider-Android
+IssueTracker: https://github.com/SLD-GCB/Taowu-spider-Android/issues
+
+Summary: 网页视频抓取与下载
+Description: |
+  一个安卓上的网页视频 / 动漫抓取与下载工具。内置浏览器走到要抓的页面,点一下
+  按钮,自动解析出 m3u8 / mp4 / DASH 流并下载成能播的本地文件。本项目是 PC 版
+  梼杌 v2.1(Python + Qt)的安卓移植版。
+
+  主要功能:
+  * HLS / DASH 下载:分片并发,支持 AES-128 / AES-256 / AES-256-CTR / cbcs 解密、
+    DASH CENC / ClearKey。
+  * 直链下载:Range 多连接加速 + 断点续传。
+  * 在线试播:下载前可先试播,下载后在「内容」页离线播放,含进度、选集、横屏。
+  * 整部抓取:批量下载整部作品。
+  * 网页探测:浏览器旁听请求 + JS 注入识别媒体流。
+
+  本仓库只分发已在 GitHub Release 上签名的正式版 APK。
+
+RepoType: git
+Repo: https://github.com/SLD-GCB/Taowu-spider-Android.git
+
+# 二进制仓库由本仓库的 CI 手动发布,不做自动版本探测
+AutoUpdateMode: None
+UpdateCheckMode: None
+CurrentVersion: '5.6'
+CurrentVersionCode: 38
