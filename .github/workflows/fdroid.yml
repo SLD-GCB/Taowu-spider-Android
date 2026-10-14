@@ -5,6 +5,12 @@ name: Publish F-Droid repo
 on:
   release:
     types: [published]
+  # 改仓库配置/元数据、或改本工作流时自动重发一次(幂等:产物没变会跳过提交)。
+  # 机器人自己只往 docs/fdroid/ 提交,不在下面的 paths 里,所以不会死循环。
+  push:
+    paths:
+      - 'fdroid/**'
+      - '.github/workflows/fdroid.yml'
   workflow_dispatch:
     inputs:
       tag:
