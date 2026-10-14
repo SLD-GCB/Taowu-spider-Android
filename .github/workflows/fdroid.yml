@@ -43,17 +43,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3-venv \
+            python3-dev \
+            build-essential \
             default-jdk-headless \
             apksigner \
             aapt \
             openssl \
             rsync
-          python3 -m venv /opt/fd
-          /opt/fd/bin/pip install --quiet --upgrade pip setuptools wheel
-          /opt/fd/bin/pip install --quiet fdroidserver
-          sudo ln -sf /opt/fd/bin/fdroid /usr/local/bin/fdroid
-          fdroid --version
-          /opt/fd/bin/pip show androguard | head -2
+          # 装在 runner 用户可写的位置($RUNNER_TEMP);/opt 属 root,用不了
+          python3 -m venv "$RUNNER_TEMP/fdvenv"
+          "$RUNNER_TEMP/fdvenv/bin/pip" install --quiet --upgrade pip setuptools wheel
+          "$RUNNER_TEMP/fdvenv/bin/pip" install --quiet fdroidserver
+          echo "$RUNNER_TEMP/fdvenv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/fdvenv/bin/fdroid" --version
+          "$RUNNER_TEMP/fdvenv/bin/pip" show androguard | head -2
 
       - name: Resolve release tag
         id: rel
